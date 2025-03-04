@@ -1,0 +1,68 @@
+Project Prompt:
+
+
+Sportsdata.IO API instructions:
+	API key: 3174c01328d048de98ec147b3bae1fd0
+
+Endpoint to grab Tournaments and TournamentID values
+https://api.sportsdata.io/golf/v2/json/Tournaments?key=3174c01328d048de98ec147b3bae1fd0
+
+Endpoint to grab tournament data
+https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/{TournamenID}?key=3174c01328d048de98ec147b3bae1fd0  
+
+
+Instructions: 
+1. Retrieve the “TournamentID”, “Name”, “Venue”, and “Location” values for each tournament in 2025 from  “https://api.sportsdata.io/golf/v2/json/Tournaments?key=3174c01328d048de98ec147b3bae1fd0”. 
+2. Create a webpage that displays all 2025 Tournaments. It should display the “Name”, “Venue”, and “Location”. Link the “Name” to a dedicated webpage for each tournament.
+3. Insert the “TournamentID” value to reach the api endpoint for each tournament in the 2025 list: https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/{TournamenID}?key=3174c01328d048de98ec147b3bae1fd0  
+4. On each Tournament page — display the “FirstName”, “LastName”, “TotalScore”, and “IsWithdrawn” values for all players. 
+
+
+For example, the “AT&T Pebble Beach Pro-Am” has a “TournamentID” of 647. The api endpoint for this tournament data is https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/647?key=3174c01328d048de98ec147b3bae1fd0. So “AT&T Pebble Beach Pro-Am” should appear on the main landing page of all tournaments and clicking it should open a new webpage that displays the “FirstName”, “LastName”, “TotalScore”, and “IsWithdrawn” values for all players . 
+
+
+
+Game Rules:
+- Users opt in to compete in a PGA Tournament. 
+- All opted in users select 3 golfers per tournament to complete their Team. 
+- No golfer can be selected by more than 1 user, per tournament. 
+- Lowest combined Team score wins (scores from all 3 golfers count towards the Team score)
+- If a player has a "TotalScore" value of “null” after 2 rounds, then their tournament score should follow these rules. 
+
+Take the "TotalStrokes" value for this player and multiply by 2, then subtract the "Par" value after multiplying it by 4. For example, for a player with a “TotalScore” of “null”, a “TotalStrokes” of 138, and a “Par” of 70, their score should be (138x2)-(70x4)‎ = -4. This player’s final score will count as -4 for the user whose team includes this player. 
+
+- After tournament completion, losing teams owe the winning team $1 per stroke their team loses by. 
+
+For example, if there are 4 teams (Team A, Team B, Team C, Team D) and their final scores are as follows:
+	
+Team A: -4
+Team B: -10
+Team C: +5
+Team D: -1
+
+Then the results should be the following:
+
+Team B wins 
+
+Team A: loses $6
+Team B: wins the sum of each loss ($30 total)
+Team C: loses $15
+Team D: loses $9
+
+- In the event that any Team selects the winner of the golf tournament, the are awarded a bonus bounty following these rules:
+
+    - Highest ranked team member (according to Official World Golf Rankings): $10
+    - Second ranked team member: $20
+    - Third ranked team member: $30
+
+Bonus bounties are owed by losing team according to these rules:
+    - First $10 is owed by the last place team
+    - Second $10 is owed by the second to last place team
+    - Third $10 is owed by the third to last place team
+
+For example, if Team A includes the tournament winner and this player was the second highest ranking player on their team, then they are awarded $20 by the bottom two teams. If the results are the same as above, then the total results are: 
+
+Team A: loses $6 to Team B, but wins $10 each from Team C and Team D (wins $14)
+Team B: wins the sum of each loss ($30 total)
+Team C: loses $15 to Team B, pays $10 bonus bounty to Team A
+Team D: loses $9 to Team B, pays $10 bonus bounty to Team A

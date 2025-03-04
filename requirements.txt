@@ -1,0 +1,2 @@
+# This project uses npm/yarn for dependencies instead of pip
+# See package.json for project dependencies 
