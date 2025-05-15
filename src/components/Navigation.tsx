@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Trophy, Users, UserCircle, Settings, X, Menu, Globe } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Trophy, Users, UserCircle, Settings, X, Menu } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import { AccountModal } from './AccountModal';
 import { supabase } from '../lib/supabase';
@@ -191,12 +191,6 @@ function NavLinks({ user, mobile = false }: { user: any; mobile?: boolean }) {
         href="/tournaments" 
         icon={<Trophy className="h-5 w-5 text-yellow-500" />} 
         text="Tournaments"
-        mobile={mobile}
-      />
-      <NavLink 
-        href="/leagues" 
-        icon={<Globe className="h-5 w-5 text-blue-500" />} 
-        text="Leagues"
         mobile={mobile}
       />
       {user?.user && (
