@@ -197,7 +197,7 @@ export function Home() {
 
   useEffect(() => {
     async function fetchRecentWinners() {
-      // 1. Get the most recent completed tournament with >1 team
+      // 1. Get the most recent completed tournament with >1 unique team
       const { data: tournaments } = await supabase
         .from('tournaments')
         .select('*')
@@ -212,15 +212,13 @@ export function Home() {
           .eq('tournament_id', tournament.TournamentID);
 
         if (results && results.length > 1) {
-          // Find the lowest score
-          const lowest = Math.min(...results.map(r => r.total_score));
-          // Find all teams with the lowest score (ties)
-          const winningTeams = results.filter(r => r.total_score === lowest).map(r => r.team_name);
-
-          // Only show if the tournament ended before today
-          const endDate = new Date(tournament.EndDate);
-          const now = new Date();
-          if (endDate < now) {
+          // Find all unique teams
+          const uniqueTeams = Array.from(new Set(results.map(r => r.team_name)));
+          if (uniqueTeams.length > 1) {
+            // Find the lowest score
+            const lowest = Math.min(...results.map(r => r.total_score));
+            // Find all teams with the lowest score (ties)
+            const winningTeams = results.filter(r => r.total_score === lowest).map(r => r.team_name);
             setRecentWinners({
               team_names: winningTeams,
               tournament_name: tournament.Name,
@@ -236,11 +234,11 @@ export function Home() {
   return (
     <div className="space-y-16">
       {/* Hero Section */}
-      <section className="text-center py-16 px-4">
-        <h1 className="text-5xl font-bold text-gray-900 mb-6">
+      <section className="text-center">
+        <h1 className="text-5xl font-bold text-gray-900 mb-6 mt-10">
           Fantasy Golf Like Never Before
         </h1>
-        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+        <p className="text-xl text-gray-600 mb-4 max-w-4xl mx-auto">
           Join the Colors Cup - where strategy meets golf. Draft your dream team,
           compete for real prizes, and experience the thrill of PGA tournaments in a whole new way.
         </p>
@@ -252,7 +250,7 @@ export function Home() {
 
       {/* Recent Tournament Section */}
       {!loading && recentTournament && (
-        <section className="bg-white rounded-2xl shadow-xl p-8 max-w-4xl mx-auto">
+        <section className="bg-white rounded-2xl shadow-xl p-4 max-w-2xl mx-auto border border-gray-200">
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-gray-900">
@@ -266,7 +264,7 @@ export function Home() {
               </Link>
             </div>
 
-            <div className="bg-gray-50 rounded-xl p-4">
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 shadow-sm">
               <h3 className="text-xl font-semibold text-gray-800 mb-4">
                 {recentTournament.Name}
               </h3>
@@ -303,7 +301,7 @@ export function Home() {
 
       {/* Winner Callout */}
       {!loading && recentWinners && (
-        <section className="bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl shadow-lg p-8 max-w-4xl mx-auto border border-green-100 mb-8">
+        <section className="bg-gray-100 rounded-2xl shadow-xl p-4 max-w-6xl mx-auto border border-gray-200 mb-4">
             <div className="flex items-center space-x-4">
               <Trophy className="h-12 w-12 text-yellow-500" />
               <div>
@@ -319,41 +317,36 @@ export function Home() {
       )}
 
       {/* Features Grid */}
-      <section className="grid md:grid-cols-3 gap-8">
+      <section className="grid md:grid-cols-3 gap-6">
         <FeatureCard
           icon={<Trophy className="h-8 w-8 text-green-600" />}
           title="Weekly Tournaments"
           description="New tournaments every week with exciting prizes and competitive gameplay."
+          bg=" bg-gray-100 border-gray-200"
         />
         <FeatureCard
-          icon={<Users className="h-8 w-8 text-green-600" />}
+          icon={<Users className="h-8 w-8 text-blue-600" />}
           title="Team Strategy"
-          description="Draft three players per tournament. Choose wisely - each stroke counts!"
+          description="Draft three players per tournament. Choose wisely – each stroke counts!"
+          bg=" bg-gray-100 border-gray-200"
         />
         <FeatureCard
-          icon={<Sparkles className="h-8 w-8 text-green-600" />}
+          icon={<Sparkles className="h-8 w-8 text-yellow-600" />}
           title="Real Prizes"
           description="Compete for cash prizes based on your team's performance."
+          bg="bg-gray-100 border-gray-200"
         />
       </section>
     </div>
   );
 }
 
-function FeatureCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
+function FeatureCard({ icon, title, description, bg }: { icon: React.ReactNode; title: string; description: string; bg: string }) {
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-      <div className="inline-block p-3 bg-green-50 rounded-full mb-4">{icon}</div>
-      <h3 className="text-xl font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-600">{description}</p>
+    <div className={`rounded-xl shadow-lg p-5 text-center border ${bg}`}>
+      <div className="inline-block p-3 bg-gray-100 rounded-full mb-3 border border-gray-200">{icon}</div>
+      <h3 className="text-xl font-semibold text-gray-900 mb-1">{title}</h3>
+      <p className="text-gray-600 text-sm">{description}</p>
     </div>
   );
 }

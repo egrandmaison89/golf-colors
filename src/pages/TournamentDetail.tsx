@@ -728,8 +728,8 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="max-w-6xl mx-auto space-y-4">
+      <div className="flex items-center justify-between mt-2 mb-2">
             <div className="flex items-center space-x-4 flex-1">
               <Link
                 to="/tournaments"
@@ -778,7 +778,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             </div>
           )}
 
-          <div className="overflow-x-auto pb-2 mb-6 -mx-4 px-4">
+          <div className="overflow-x-auto pb-2 mb-2">
             <div className="flex flex-wrap gap-2 min-w-max">
               <TabButton
                 active={activeTab === 'standings'} 

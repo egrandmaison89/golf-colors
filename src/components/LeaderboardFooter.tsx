@@ -69,7 +69,7 @@ export function LeaderboardFooter() {
   }
 
   return (
-    <div className="bg-gradient-to-r from-green-700/80 via-blue-700/80 to-red-700/80 rounded-2xl shadow-xl p-8">
+    <div className="bg-gradient-to-r from-green-700/80 via-blue-700/80 to-red-700/80 rounded-2xl shadow-xl p-4 max-w-6xl mx-auto mt-0">
       <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
         <Trophy className="h-7 w-7 text-yellow-300" />
         Yearly Leaderboard

@@ -13,18 +13,17 @@ const ENABLE_LEAGUES = import.meta.env.VITE_ENABLE_LEAGUES === 'true';
 export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 via-green-100 to-yellow-100">
-      <Navigation />
-      <main className="container mx-auto px-4 py-8 rounded-2xl shadow-2xl border-4 border-blue-200/30 bg-white/80 backdrop-blur-md">
+      <div className="w-full bg-white/90 shadow-md border-b border-blue-200/40">
+        <Navigation />
+      </div>
+      <main className="max-w-6xl mx-auto px-4 py-4 rounded-2xl shadow-xl border border-blue-200/30 bg-white/90 backdrop-blur-md mt-4">
         {children}
       </main>
-      <div className="container mx-auto px-4" style={{ marginBottom: '60px' }}>
-        <div className="mt-10">
-            <LeaderboardFooter />
-        </div>  
+      <div className="max-w-6xl mx-auto mt-4">
+        <LeaderboardFooter />
       </div>
-
-      <footer className="bg-gradient-to-br from-green-700 via-blue-600 to-yellow-500 text-white py-16 mt-auto shadow-inner">
-        <div className="container mx-auto px-4">
+      <footer className="bg-gradient-to-br from-green-700 via-blue-600 to-yellow-500 text-white py-12 mt-12 shadow-inner">
+        <div className="max-w-5xl mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-12">
             <div>
               <div className="flex items-center space-x-2 mb-6">
