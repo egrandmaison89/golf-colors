@@ -53,3 +53,9 @@ export async function checkEmailConfirmation() {
   console.log('Email confirmation status:', session?.user?.email_confirmed_at);
   return { session, error };
 }
+
+export async function sendPasswordResetEmail(email: string) {
+  return await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/auth/callback`
+  });
+}
