@@ -25,6 +25,7 @@ export interface Player {
   HeadshotUrl?: string;
   CareerEarnings?: number;
   WorldGolfRanking?: number;
+  Swings?: string;
 }
 
 export interface PlayerRound {

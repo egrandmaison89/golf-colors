@@ -12,9 +12,9 @@ const ENABLE_LEAGUES = import.meta.env.VITE_ENABLE_LEAGUES === 'true';
 
 export function Layout({ children }: LayoutProps) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-green-100 to-yellow-100">
       <Navigation />
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 rounded-2xl shadow-2xl border-4 border-blue-200/30 bg-white/80 backdrop-blur-md">
         {children}
       </main>
       <div className="container mx-auto px-4" style={{ marginBottom: '60px' }}>
@@ -23,20 +23,20 @@ export function Layout({ children }: LayoutProps) {
         </div>  
       </div>
 
-      <footer className="bg-gradient-to-br from-green-900 via-blue-900 to-red-900 text-white py-16 mt-auto">
+      <footer className="bg-gradient-to-br from-green-700 via-blue-600 to-yellow-500 text-white py-16 mt-auto shadow-inner">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-12">
             <div>
               <div className="flex items-center space-x-2 mb-6">
                 <img src="/logo.svg" alt="Colors Cup Logo" className="w-8 h-8" />
-                <span className="text-xl font-bold bg-gradient-to-r from-red-500 via-green-500 to-blue-500 bg-clip-text text-transparent">
+                <span className="text-xl font-bold bg-gradient-to-r from-red-400 via-green-400 to-blue-400 bg-clip-text text-transparent">
                   Colors Cup
                 </span>
               </div>
-              <p className="text-gray-300 mb-4">
+              <p className="text-gray-100 mb-4">
                 Experience fantasy golf like never before. Draft your dream team and compete for real prizes.
               </p>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-200">
                 © {new Date().getFullYear()} Colors Cup. All rights reserved.
               </p>
             </div>

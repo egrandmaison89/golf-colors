@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserX } from 'lucide-react';
 import type { Player, TeamPlayer } from '../../types/tournament';
+import { PlayerCard } from './PlayerCard';
 
 interface DraftedPlayersProps {
   players: Player[];
@@ -8,7 +9,9 @@ interface DraftedPlayersProps {
   getPlayerStatus: (player: Player) => 'active' | 'cut' | 'withdrawn';
   calculatePlayerScore: (player: Player, allPlayers: Player[]) => number;
   renderPlayerScore: (player: Player, score: number, status: 'active' | 'cut' | 'withdrawn') => string;
-  onPlayerClick?: (player: Player) => void;
+  selectedPlayerId: number | null;
+  setSelectedPlayerId: (id: number | null) => void;
+  golfersMap: Record<number, { WorldGolfRank: number }>;
 }
 
 // Type guard for Player with TotalThrough
@@ -30,7 +33,9 @@ export function DraftedPlayers({
   getPlayerStatus,
   calculatePlayerScore,
   renderPlayerScore,
-  onPlayerClick
+  selectedPlayerId,
+  setSelectedPlayerId,
+  golfersMap
 }: DraftedPlayersProps) {
   if (!teamPlayers.length) {
     return (
@@ -123,64 +128,71 @@ export function DraftedPlayers({
                   }
                 }
               }
-              return (
-                <tr 
-                  key={player.PlayerID}
-                  className={`${
-                    player.status === 'withdrawn' ? 'bg-red-50' : 
-                    player.status === 'cut' ? 'bg-orange-50' : 
-                    'hover:bg-gray-50'
-                  }`}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {index + 1}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div>
+              return [
+              <tr 
+                key={player.PlayerID}
+                className={`${
+                  player.status === 'withdrawn' ? 'bg-red-50' : 
+                  player.status === 'cut' ? 'bg-orange-50' : 
+                  'hover:bg-gray-50'
+                }`}
+              >
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {index + 1}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <div>
                         <div className="text-sm font-medium text-gray-900" 
-                          style={onPlayerClick ? { cursor: 'pointer', textDecoration: 'underline' } : {}}
-                          onClick={onPlayerClick ? () => onPlayerClick(player) : undefined}
+                          style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                          onClick={() => setSelectedPlayerId(player.PlayerID === selectedPlayerId ? null : player.PlayerID)}
                         >
-                          {player.FirstName} {player.LastName}
-                        </div>
-                        {player.status === 'withdrawn' && (
-                          <div className="text-sm text-red-600 flex items-center mt-1">
-                            <UserX className="h-4 w-4 mr-1" />
-                            Withdrawn
-                          </div>
-                        )}
-                        {player.status === 'cut' && (
-                          <div className="text-sm text-orange-600 mt-1">
-                            Cut
-                          </div>
-                        )}
+                        {player.FirstName} {player.LastName}
                       </div>
+                      {player.status === 'withdrawn' && (
+                        <div className="text-sm text-red-600 flex items-center mt-1">
+                          <UserX className="h-4 w-4 mr-1" />
+                          Withdrawn
+                        </div>
+                      )}
+                      {player.status === 'cut' && (
+                        <div className="text-sm text-orange-600 mt-1">
+                          Cut
+                        </div>
+                      )}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center space-x-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: player.teamColor?.toLowerCase() || 'blue' }}
-                      />
-                      <span className="text-sm text-gray-900">{player.teamName}</span>
-                    </div>
-                  </td>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center space-x-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: player.teamColor?.toLowerCase() || 'blue' }}
+                    />
+                    <span className="text-sm text-gray-900">{player.teamName}</span>
+                  </div>
+                </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-700">{progress}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <span className={`text-sm font-medium ${
-                      player.status === 'withdrawn' ? 'text-red-600' :
-                      player.status === 'cut' ? 'text-orange-600' :
-                      player.score <= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {renderPlayerScore(player, player.score, player.status)}
-                    </span>
+                <td className="px-6 py-4 whitespace-nowrap text-right">
+                  <span className={`text-sm font-medium ${
+                    player.status === 'withdrawn' ? 'text-red-600' :
+                    player.status === 'cut' ? 'text-orange-600' :
+                    player.score <= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {renderPlayerScore(player, player.score, player.status)}
+                  </span>
                   </td>
-                </tr>
-              );
+                </tr>,
+                selectedPlayerId === player.PlayerID && (
+                  <tr key={`player-card-${player.PlayerID}`}> 
+                    <td colSpan={5} className="p-0">
+                      <PlayerCard player={{ ...player, WorldGolfRanking: golfersMap[player.PlayerID]?.WorldGolfRank ?? player.WorldGolfRanking }} onClose={() => setSelectedPlayerId(null)} />
+                </td>
+              </tr>
+                )
+              ];
             })}
           </tbody>
         </table>

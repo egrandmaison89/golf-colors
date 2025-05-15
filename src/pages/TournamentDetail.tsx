@@ -101,24 +101,15 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   const [isFutureTournament, setIsFutureTournament] = useState(false);
   const [wasUnregistered, setWasUnregistered] = useState(false);
   const [registeredTeams, setRegisteredTeams] = useState<Array<{ team_name: string; team_color: string; }>>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [playerDetailsMap, setPlayerDetailsMap] = useState<Record<number, { PhotoUrl?: string; CareerEarnings?: number; WorldGolfRanking?: number }>>({});
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [golfersMap, setGolfersMap] = useState<Record<number, { WorldGolfRank: number }>>({});
 
   const tournamentIdNum = tournamentId ? parseInt(tournamentId) : 0;
 
-  // Handler to open player card
   const handleShowPlayerCard = (player: Player) => {
-    const details = playerDetailsMap[player.PlayerID] || {};
-    const golferRank = golfersMap[player.PlayerID]?.WorldGolfRank;
-    setSelectedPlayer({
-      ...player,
-      HeadshotUrl: details.PhotoUrl || player.HeadshotUrl,
-      CareerEarnings: details.CareerEarnings,
-      WorldGolfRanking: golferRank
-    });
+    setSelectedPlayerId(player.PlayerID === selectedPlayerId ? null : player.PlayerID);
   };
-  const handleClosePlayerCard = () => setSelectedPlayer(null);
+  const handleClosePlayerCard = () => setSelectedPlayerId(null);
 
   const renderStandings = () => {
     const isFutureTournament = tournament && new Date(tournament.StartDate) > new Date();
@@ -194,7 +185,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                   }
                 }
                 
-                return (
+                return [
                   <tr
                     key={player.PlayerID}
                     className={`${status === 'withdrawn' ? 'bg-red-50' : 'hover:bg-gray-50'} ${
@@ -260,8 +251,15 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                         </button>
                       </td>
                     )}
-                  </tr>
-                );
+                  </tr>,
+                  selectedPlayerId === player.PlayerID && (
+                    <tr key={`player-card-${player.PlayerID}`}> 
+                      <td colSpan={isFutureTournament && isRegistered ? 5 : 4} className="p-0">
+                        <PlayerCard player={{ ...player, WorldGolfRanking: golfersMap[player.PlayerID]?.WorldGolfRank ?? player.WorldGolfRanking }} onClose={handleClosePlayerCard} />
+                      </td>
+                    </tr>
+                  )
+                ];
               })}
             </tbody>
           </table>
@@ -702,30 +700,6 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   }
 
   useEffect(() => {
-    async function fetchPlayerDetails() {
-      try {
-        const resp = await fetch(`https://api.sportsdata.io/golf/v2/json/Players?key=${API_KEY}`);
-        if (resp.ok) {
-          const data: Array<{ PlayerID: number; PhotoUrl?: string; CareerEarnings?: number; WorldGolfRanking?: number }> = await resp.json();
-          // Map PlayerID to PhotoUrl, CareerEarnings, WorldGolfRanking if available
-          const map: Record<number, { PhotoUrl?: string; CareerEarnings?: number; WorldGolfRanking?: number }> = {};
-          data.forEach((p) => {
-            map[p.PlayerID] = {
-              PhotoUrl: p.PhotoUrl,
-              CareerEarnings: p.CareerEarnings, // if available
-              WorldGolfRanking: p.WorldGolfRanking // if available
-            };
-          });
-          setPlayerDetailsMap(map);
-        }
-      } catch {
-        // ignore error, fallback to N/A
-      }
-    }
-    fetchPlayerDetails();
-  }, [API_KEY]);
-
-  useEffect(() => {
     fetch('/golfers.json')
       .then(res => res.json())
       .then((golfers: Array<{ PlayerID: number; WorldGolfRank: number }>) => {
@@ -844,14 +818,13 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               getPlayerStatus={getPlayerStatus}
               calculatePlayerScore={calculatePlayerScore}
               renderPlayerScore={renderPlayerScore}
-              onPlayerClick={handleShowPlayerCard}
+              selectedPlayerId={selectedPlayerId}
+              setSelectedPlayerId={setSelectedPlayerId}
+              golfersMap={golfersMap}
             />
           )}
           {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
       {activeTab === 'results' && <TournamentResults teamScores={teamScores} players={players} registeredTeams={registeredTeams} />}
-      {selectedPlayer && (
-        <PlayerCard player={selectedPlayer} onClose={handleClosePlayerCard} />
-      )}
     </div>
   );
 }

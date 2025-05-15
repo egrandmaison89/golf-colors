@@ -16,8 +16,8 @@ export function getPlayerStatus(player: Player): 'active' | 'cut' | 'withdrawn' 
 
   // 2. Use TournamentStatus if available
   if (hasTournamentStatus(player) && (player.TournamentStatus === 'Withdrawn' || player.TournamentStatus === 'WD')) {
-    return 'withdrawn';
-  }
+      return 'withdrawn';
+    }
 
   // 3. If player has a tee time in the past and has not completed any holes, but is not withdrawn, treat as active
   const now = new Date();
@@ -36,7 +36,7 @@ export function getPlayerStatus(player: Player): 'active' | 'cut' | 'withdrawn' 
 
   // 4. If player has been cut (your existing logic)
   if (player.TotalStrokes > 0 && player.TotalScore === null) {
-    return 'cut';
+      return 'cut';
   }
 
   // 5. Default to active
