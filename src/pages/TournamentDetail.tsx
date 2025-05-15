@@ -125,6 +125,9 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                   {isFutureTournament ? 'Odds to Win' : 'Total Score'}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  THRU
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
                 {isFutureTournament && isRegistered && (
@@ -142,6 +145,37 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                 const isPlayerTaken = teamPlayers.some(tp => 
                   tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
                 );
+                
+                // THRU/progress logic (same as DraftedPlayers)
+                let progress = '';
+                const today = new Date().toISOString().slice(0, 10);
+                if ('TotalThrough' in player && typeof player.TotalThrough === 'number') {
+                  const thru = player.TotalThrough;
+                  if (thru === 0 || thru === null) {
+                    const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                    if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                  } else if (thru >= 18) {
+                    progress = 'F';
+                  } else {
+                    progress = `${thru}`;
+                  }
+                } else {
+                  let roundToday = undefined;
+                  if (Array.isArray(player.PlayerRoundScore)) {
+                    roundToday = player.PlayerRoundScore.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                  }
+                  if (roundToday) {
+                    if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
+                      progress = `${roundToday.Thru}`;
+                    } else if (roundToday.Thru === 18) {
+                      progress = 'F';
+                    } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                  }
+                }
                 
                 return (
                   <tr
@@ -165,6 +199,9 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                           renderPlayerScore(player, score, status)
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-700">{progress}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {isFutureTournament ? (
@@ -414,17 +451,69 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               }
             }
           } else {
+            // Fetch main player data
             const response = await fetch(
               `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`
             );
             if (!response.ok) throw new Error('Failed to fetch tournament details');
             const data = await response.json();
+
+            // Fetch leaderboard for per-hole data
+            const leaderboardResponse = await fetch(
+              `https://api.sportsdata.io/golf/v2/json/Leaderboard/${tournamentId}?key=${API_KEY}`
+            );
+            let leaderboardData: unknown = null;
+            if (leaderboardResponse.ok) {
+              leaderboardData = await leaderboardResponse.json();
+            }
+            // Build a map of PlayerID to THRU (holes completed)
+            const thruMap = new Map<number, number>();
+            if (
+              leaderboardData &&
+              typeof leaderboardData === 'object' &&
+              leaderboardData !== null &&
+              'Players' in leaderboardData &&
+              Array.isArray((leaderboardData as { Players: unknown[] }).Players)
+            ) {
+              ((leaderboardData as { Players: unknown[] }).Players).forEach((player) => {
+                if (
+                  player &&
+                  typeof player === 'object' &&
+                  'PlayerID' in player &&
+                  'Rounds' in player &&
+                  Array.isArray((player as { Rounds: unknown[] }).Rounds)
+                ) {
+                  let maxThru = 0;
+                  ((player as { Rounds: unknown[] }).Rounds).forEach((round) => {
+                    if (
+                      round &&
+                      typeof round === 'object' &&
+                      'Holes' in round &&
+                      Array.isArray((round as { Holes: unknown[] }).Holes)
+                    ) {
+                      const holesCompleted = ((round as { Holes: unknown[] }).Holes).filter((h) =>
+                        h && typeof h === 'object' && 'Score' in h && (h as { Score: unknown }).Score !== null
+                      ).length;
+                      if (holesCompleted > maxThru) {
+                        maxThru = holesCompleted;
+                      }
+                    }
+                  });
+                  thruMap.set((player as { PlayerID: number }).PlayerID, maxThru);
+                }
+              });
+            }
+            // Merge THRU into player objects
             sortedPlayers = data.sort((a: Player, b: Player) => {
               if (a.TotalScore === null && b.TotalScore === null) return 0;
               if (a.TotalScore === null) return 1;
               if (b.TotalScore === null) return -1;
               return a.TotalScore - b.TotalScore;
-            });
+            }).map((player: Player) => ({
+              ...player,
+              TotalThrough: thruMap.get(player.PlayerID) ?? null
+            }));
+            console.log('Final sortedPlayers with deduced THRU:', sortedPlayers);
           }
         }
         setPlayers(sortedPlayers);

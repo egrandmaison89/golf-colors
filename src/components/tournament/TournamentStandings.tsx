@@ -15,6 +15,11 @@ interface TournamentStandingsProps {
   renderPlayerScore: (player: Player, score: number, status: 'active' | 'cut' | 'withdrawn') => string;
 }
 
+// Type guard for Player with TotalThrough
+function hasTotalThrough(player: unknown): player is Player & { TotalThrough: number } {
+  return typeof player === 'object' && player !== null && 'TotalThrough' in player && typeof (player as { TotalThrough?: unknown }).TotalThrough === 'number';
+}
+
 export function TournamentStandings({
   players,
   isFutureTournament,
@@ -62,20 +67,33 @@ export function TournamentStandings({
               const isPlayerTaken = teamPlayers.some(tp => 
                 tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
               );
-              // Find today's round (robust logic)
               const today = new Date().toISOString().slice(0, 10);
               let progress = '';
-              let roundToday = undefined;
-              if (Array.isArray(player.PlayerRoundScore)) {
-                roundToday = player.PlayerRoundScore.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-              }
-              if (roundToday) {
-                if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
-                  progress = `Thru ${roundToday.Thru}`;
-                } else if (roundToday.Thru === 18) {
+              if (hasTotalThrough(player)) {
+                const thru = player.TotalThrough;
+                if (thru === 0 || thru === null) {
+                  const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                  if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                    progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  }
+                } else if (thru >= 18) {
                   progress = 'F';
-                } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                  progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } else {
+                  progress = `${thru}`;
+                }
+              } else {
+                let roundToday = undefined;
+                if (Array.isArray(player.PlayerRoundScore)) {
+                  roundToday = player.PlayerRoundScore.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                }
+                if (roundToday) {
+                  if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
+                    progress = `${roundToday.Thru}`;
+                  } else if (roundToday.Thru === 18) {
+                    progress = 'F';
+                  } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                    progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  }
                 }
               }
               
