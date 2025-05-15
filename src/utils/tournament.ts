@@ -1,20 +1,45 @@
 import type { Player } from '../types/tournament';
 
+// Type guard for TournamentStatus
+function hasTournamentStatus(player: unknown): player is { TournamentStatus: string } {
+  return typeof player === 'object' && player !== null && 'TournamentStatus' in player && typeof (player as { TournamentStatus?: unknown }).TournamentStatus === 'string';
+}
+
+// Type guard for Holes array
+function hasHoles(round: unknown): round is { Holes: Array<{ Score: number | null }> } {
+  return typeof round === 'object' && round !== null && 'Holes' in round && Array.isArray((round as { Holes?: unknown }).Holes);
+}
+
 export function getPlayerStatus(player: Player): 'active' | 'cut' | 'withdrawn' {
-  if (player.TotalScore === null) {
-    const hasStartedRound = player.PlayerRoundScore?.some(round => 
-      round.TeeTime && new Date(round.TeeTime) < new Date() && round.Score === 0
-    );
+  // 1. Use explicit withdrawn flag if available
+  if (player.IsWithdrawn) return 'withdrawn';
 
-    if (hasStartedRound) {
-      return 'withdrawn';
-    }
-
-    if (player.TotalStrokes > 0) {
-      return 'cut';
-    }
+  // 2. Use TournamentStatus if available
+  if (hasTournamentStatus(player) && (player.TournamentStatus === 'Withdrawn' || player.TournamentStatus === 'WD')) {
+    return 'withdrawn';
   }
 
+  // 3. If player has a tee time in the past and has not completed any holes, but is not withdrawn, treat as active
+  const now = new Date();
+  const hasStartedRound = player.PlayerRoundScore?.some(round =>
+    round.TeeTime && new Date(round.TeeTime) < now
+  );
+
+  // If the player has any non-null hole scores, they're active
+  const hasAnyHoleScore = player.PlayerRoundScore?.some(round =>
+    hasHoles(round) && round.Holes.some((h) => h.Score !== null)
+  );
+
+  if (hasStartedRound && (hasAnyHoleScore || !player.IsWithdrawn)) {
+    return 'active';
+  }
+
+  // 4. If player has been cut (your existing logic)
+  if (player.TotalStrokes > 0 && player.TotalScore === null) {
+    return 'cut';
+  }
+
+  // 5. Default to active
   return 'active';
 }
 
