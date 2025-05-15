@@ -61,6 +61,7 @@ export function Navigation() {
     };
   }, []);
 
+  // Fetch notifications on mount and whenever user changes
   useEffect(() => {
     async function fetchNotifications() {
       if (!user?.user) return setNotifications([]);
@@ -73,7 +74,19 @@ export function Navigation() {
         .eq('status', 'proposed')
         .order('created_at', { ascending: false });
       if (error) return setNotifications([]);
-      const incoming = (data || []).filter((bet: any) => bet.opponent_id === userId || (bet.opponent_id === null && bet.proposer_id !== userId)).map((bet: any) => ({ ...bet, type: 'incoming' as NotificationType }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const incoming = (data || []).filter((bet: any) => bet.opponent_id === userId || (bet.opponent_id === null && bet.proposer_id !== userId)).map((bet: any) => ({
+        id: bet.id,
+        description: bet.description,
+        amount: bet.amount,
+        odds: bet.odds,
+        proposer: bet.proposer,
+        proposer_id: bet.proposer_id,
+        opponent_id: bet.opponent_id,
+        status: bet.status,
+        created_at: bet.created_at,
+        type: 'incoming' as NotificationType
+      }));
       // Fetch responses to user's proposals
       const { data: responses } = await supabase
         .from('side_bets')
@@ -81,18 +94,27 @@ export function Navigation() {
         .eq('proposer_id', userId)
         .not('status', 'eq', 'proposed')
         .order('created_at', { ascending: false });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const responseNotifications = (responses || []).map((bet: any) => ({
-        ...bet,
+        id: bet.id,
+        description: bet.description,
+        amount: bet.amount,
+        odds: bet.odds,
+        proposer: bet.proposer,
+        proposer_id: bet.proposer_id,
+        opponent_id: bet.opponent_id,
+        status: bet.status,
+        created_at: bet.created_at,
         type: 'response' as NotificationType,
         responseStatus: bet.status,
         responderTeamName: bet.opponent?.team_name || 'Opponent',
       }));
       setNotifications([...incoming, ...responseNotifications].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
     }
-    if (showNotifications) fetchNotifications();
-  }, [showNotifications, user]);
+    fetchNotifications();
+  }, [user]);
 
-  // Real-time subscription for side bet notifications
+  // Real-time subscription for side bet notifications (already updates notifications)
   useEffect(() => {
     if (!user?.user) return;
     const userId = user.user.id;
@@ -111,9 +133,16 @@ export function Navigation() {
         ) {
           setNotifications((prev) => [
             {
-              ...bet,
-              proposer: bet.proposer, // may need to refetch for team_name
-              type: 'incoming',
+              id: bet.id,
+              description: bet.description,
+              amount: bet.amount,
+              odds: bet.odds,
+              proposer: bet.proposer,
+              proposer_id: bet.proposer_id,
+              opponent_id: bet.opponent_id,
+              status: bet.status,
+              created_at: bet.created_at,
+              type: 'incoming' as NotificationType
             },
             ...prev,
           ]);
@@ -134,9 +163,16 @@ export function Navigation() {
         ) {
           setNotifications((prev) => [
             {
-              ...bet,
+              id: bet.id,
+              description: bet.description,
+              amount: bet.amount,
+              odds: bet.odds,
               proposer: bet.proposer,
-              type: 'response',
+              proposer_id: bet.proposer_id,
+              opponent_id: bet.opponent_id,
+              status: bet.status,
+              created_at: bet.created_at,
+              type: 'response' as NotificationType,
               responseStatus: bet.status,
               responderTeamName: bet.opponent?.team_name || 'Opponent',
             },
@@ -161,7 +197,7 @@ export function Navigation() {
       setProfile(data);
     } else {
       // Only log actual errors, not "no rows returned"
-      if (error.code !== 'PGRST116') {
+      if (error && error.code !== 'PGRST116') {
         console.error('Error fetching profile:', error);
       }
       setProfile(null);
@@ -361,6 +397,7 @@ export function Navigation() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function NavLinks({ user, mobile = false }: { user: any; mobile?: boolean }) {
   const location = useLocation();
   return (
