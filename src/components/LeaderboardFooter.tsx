@@ -54,7 +54,7 @@ export function LeaderboardFooter() {
           };
         })
       );
-      setLeaderboard(leaderboardData.sort((a, b) => a.combinedScore - b.combinedScore));
+      setLeaderboard(leaderboardData.sort((a, b) => b.totalEarnings - a.totalEarnings));
       setLoading(false);
     }
     fetchLeaderboard();
@@ -129,9 +129,6 @@ export function LeaderboardFooter() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-200 mt-4 text-center">
-        Leaderboard updates after each completed tournament. <span className="font-semibold">Top 3 teams are highlighted!</span>
-      </p>
     </div>
   );
 } 

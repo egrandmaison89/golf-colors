@@ -47,6 +47,7 @@ export function Layout({ children }: LayoutProps) {
                 <Link 
                   to="/tournaments" 
                   className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 >
                   <Trophy className="h-5 w-5" />
                   <span>Tournaments</span>
@@ -55,6 +56,7 @@ export function Layout({ children }: LayoutProps) {
                   <Link 
                     to="/league" 
                     className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                   >
                     <Users className="h-5 w-5" />
                     <span>League Overview</span>
@@ -63,6 +65,7 @@ export function Layout({ children }: LayoutProps) {
                 <Link 
                   to="/side-bets" 
                   className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 >
                   <HandCoins className="h-5 w-5" />
                   <span>Side Bets</span>
@@ -70,6 +73,7 @@ export function Layout({ children }: LayoutProps) {
                 <Link 
                   to="/rules" 
                   className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 >
                   <Book className="h-5 w-5" />
                   <span>Rules & Scoring</span>
