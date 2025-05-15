@@ -13,21 +13,13 @@ interface TournamentEntry {
 }
 
 export function Tournaments() {
-  const navigate = useNavigate();
+  // const navigate = useNavigate(); // Removed unused variable
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<Record<number, TournamentEntry[]>>({});
+  // TODO: Specify a better type than 'any' for user
   const [user, setUser] = useState<any>(null);
-  const [userLeagueTournaments, setUserLeagueTournaments] = useState<Set<number>>(new Set());
-  const [mockTournament] = useState<Tournament>({
-    TournamentID: 999999,
-    Name: "Fantasy Golf Masters Championship",
-    Venue: "Augusta National Golf Club",
-    Location: "Augusta, Georgia",
-    StartDate: "2025-12-25",
-    EndDate: "2025-12-28"
-  });
 
   const fetchTournamentEntries = useCallback(async () => {
     const { data: entriesData } = await supabase
@@ -44,7 +36,9 @@ export function Tournaments() {
       // Process entries in order, keeping only the first entry for each team per tournament
       entriesData.forEach(entry => {
         const tournamentId = entry.tournament_id;
-        const teamName = entry.profiles?.team_name;
+        // If profiles is an array, use entry.profiles[0]?.team_name
+        // If it's an object, use entry.profile?.team_name
+        const teamName = Array.isArray(entry.profiles) ? entry.profiles[0]?.team_name : entry.profiles?.team_name;
         
         if (!teamName) return;
         
@@ -86,56 +80,29 @@ export function Tournaments() {
   useEffect(() => {
     async function fetchTournaments() {
       try {
-        // Get tournaments from user's leagues
-        const { data: leagueTournaments } = await supabase
-          .from('league_tournaments')
-          .select(`
-            tournament_id,
-            league_members!inner(
-              user_id
-            )
-          `)
-          .eq('league_members.user_id', user?.user?.id);
-
-        const tournamentIds = new Set(leagueTournaments?.map(lt => lt.tournament_id) || []);
-        setUserLeagueTournaments(tournamentIds);
-
+        const tournaments2025 = await getTournaments();
         const now = new Date();
         now.setHours(0, 0, 0, 0);
-
-        const tournaments2025 = await getTournaments();
-        
-        // Filter tournaments based on league membership
-        const filteredTournaments = user?.user
-          ? tournaments2025.filter(t => tournamentIds.has(t.TournamentID))
-          : tournaments2025;
-        
         // Sort tournaments by status and date
-        const sortedTournaments = filteredTournaments.sort((a: Tournament, b: Tournament) => {
+        const sortedTournaments = tournaments2025.sort((a: Tournament, b: Tournament) => {
           const aStartDate = new Date(a.StartDate);
           const aEndDate = new Date(a.EndDate);
           const bStartDate = new Date(b.StartDate);
           const bEndDate = new Date(b.EndDate);
-          
           // Check if tournaments are active
           const aIsActive = aStartDate <= now && aEndDate >= now;
           const bIsActive = bStartDate <= now && bEndDate >= now;
-          
           if (aIsActive && !bIsActive) return -1;
           if (!aIsActive && bIsActive) return 1;
-          
           // If neither is active, check if they're upcoming
           const aIsUpcoming = aStartDate > now;
           const bIsUpcoming = bStartDate > now;
-          
           if (aIsUpcoming && !bIsUpcoming) return -1;
           if (!aIsUpcoming && bIsUpcoming) return 1;
-          
           // If both are in the same category (upcoming or completed)
           // Sort by start date
           return aStartDate.getTime() - bStartDate.getTime();
         });
-        
         setTournaments(sortedTournaments);
         await fetchTournamentEntries();
       } catch (err) {
@@ -144,7 +111,6 @@ export function Tournaments() {
         setLoading(false);
       }
     }
-
     fetchTournaments();
   }, [user]);
 
@@ -221,26 +187,11 @@ export function Tournaments() {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">
-          {user?.user ? 'My League Tournaments' : '2025 PGA Tournaments'}
-        </h1>
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          {user?.user
-            ? 'View and participate in tournaments from your leagues'
-            : 'Sign in to join leagues and participate in tournaments'
-          }
-        </p>
-        {user?.user && tournaments.length === 0 && (
-          <div className="mt-8 p-6 bg-gray-50 rounded-xl">
-            <p className="text-gray-600 mb-4">You don't have any tournaments yet.</p>
-            <Link
-              to="/leagues"
-              className="inline-flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <span>Join or Create a League</span>
-            </Link>
-          </div>
-        )}
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            2025 PGA Tournaments
+          </h1>
+        </div>
       </div>
 
       <div className="grid gap-6">
@@ -284,6 +235,7 @@ export function Tournaments() {
                         user={user}
                         entries={entries}
                         onRegister={handleRegister}
+                        fetchTournamentEntries={fetchTournamentEntries}
                       />
                     ))}
                   </div>
@@ -307,6 +259,7 @@ export function Tournaments() {
                         user={user}
                         entries={entries}
                         onRegister={handleRegister}
+                        fetchTournamentEntries={fetchTournamentEntries}
                       />
                     ))}
                   </div>
@@ -330,6 +283,7 @@ export function Tournaments() {
                         user={user}
                         entries={entries}
                         onRegister={handleRegister}
+                        fetchTournamentEntries={fetchTournamentEntries}
                       />
                     ))}
                   </div>
@@ -347,23 +301,25 @@ function TournamentCard({
   tournament,
   user,
   entries,
-  onRegister
+  onRegister,
+  fetchTournamentEntries
 }: {
   tournament: Tournament;
+  // TODO: Specify a better type than 'any' for user
   user: any;
   entries: Record<number, TournamentEntry[]>;
   onRegister: (tournamentId: number) => void;
+  fetchTournamentEntries: () => Promise<void>;
 }) {
+  const navigate = useNavigate();
   const [showTeams, setShowTeams] = useState(false);
+  const [unregistering, setUnregistering] = useState(false);
   const startDate = new Date(tournament.StartDate);
   const endDate = new Date(tournament.EndDate);
   const now = new Date();
-  
-  // Set time to start of day for accurate date comparison
   startDate.setHours(0, 0, 0, 0);
   endDate.setHours(23, 59, 59, 999);
   now.setHours(0, 0, 0, 0);
-  
   const isPast = endDate < now;
   const isActive = startDate <= now && endDate >= now;
   const isFuture = startDate > now;
@@ -371,12 +327,29 @@ function TournamentCard({
   const isRegistered = user?.user && tournamentEntries.some(
     entry => entry.user_id === user.user?.id
   );
-  
   const statusClasses = isPast
     ? 'bg-gray-100 hover:bg-gray-50'
     : isActive
     ? 'bg-green-50 hover:bg-green-100 ring-2 ring-green-500'
     : 'bg-white hover:bg-gray-50';
+
+  async function handleUnregister(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setUnregistering(true);
+    try {
+      const { error } = await supabase
+        .from('tournament_entries')
+        .delete()
+        .match({ tournament_id: tournament.TournamentID, user_id: user.user.id });
+      if (error) throw error;
+      await fetchTournamentEntries();
+    } catch {
+      alert('Error unregistering. Please try again.');
+    } finally {
+      setUnregistering(false);
+    }
+  }
 
   return (
     <Link
@@ -421,9 +394,8 @@ function TournamentCard({
             {isRegistered ? (
               <div className="flex items-center justify-between">
                 <span className="text-green-600 font-medium">You're registered!</span>
-                {isFuture && (
+                <div className="flex gap-2">
                   <button
-                    to={`/tournament/${tournament.TournamentID}`}
                     className="text-sm bg-green-100 text-green-600 px-3 py-1 rounded-lg hover:bg-green-200 transition-colors cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -432,7 +404,14 @@ function TournamentCard({
                   >
                     Manage Team
                   </button>
-                )}
+                  <button
+                    onClick={handleUnregister}
+                    className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded-lg hover:bg-red-200 transition-colors cursor-pointer"
+                    disabled={unregistering}
+                  >
+                    {unregistering ? 'Unregistering...' : 'Unregister'}
+                  </button>
+                </div>
               </div>
             ) : (
               <button
@@ -465,12 +444,12 @@ function TournamentCard({
             {showTeams && (
               <div className="space-y-2 mt-3">
                 {tournamentEntries.map((entry) => (
-                  entry.profiles?.team_name && (
+                  entry.profile?.team_name && (
                     <div
                       key={entry.user_id}
                       className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-lg"
                     >
-                      {entry.profiles.team_name}
+                      {entry.profile.team_name}
                     </div>
                   )
                 ))}

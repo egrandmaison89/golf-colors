@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Player, TeamPlayer, TeamScore } from '../types/tournament';
 import { UserX, Trophy, ArrowLeft, Users, PenTool } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,7 +14,6 @@ import {
 } from 'chart.js';
 import { supabase } from '../lib/supabase';
 import type { Tournament } from '../types/tournament';
-import { TournamentStandings } from '../components/tournament/TournamentStandings';
 import { DraftedPlayers } from '../components/tournament/DraftedPlayers';
 import { TeamScores } from '../components/tournament/TeamScores';
 import { TournamentResults } from '../components/tournament/TournamentResults';
@@ -33,11 +31,6 @@ ChartJS.register(
   Legend
 );
 
-interface TournamentEntry {
-  id: string;
-  user_id: string;
-}
-
 const API_KEY = import.meta.env.VITE_SPORTSDATA_API_KEY;
 
 interface PlayerOdds {
@@ -47,26 +40,43 @@ interface PlayerOdds {
 }
 
 const MOCK_PLAYERS: Player[] = [
-  { PlayerID: 1, FirstName: "Rory", LastName: "McIlroy", TotalScore: -8, IsWithdrawn: false, TotalStrokes: 280, Par: 72 },
-  { PlayerID: 2, FirstName: "Jordan", LastName: "Spieth", TotalScore: -6, IsWithdrawn: false, TotalStrokes: 282, Par: 72 },
-  { PlayerID: 3, FirstName: "Brooks", LastName: "Koepka", TotalScore: -5, IsWithdrawn: false, TotalStrokes: 283, Par: 72 },
-  { PlayerID: 4, FirstName: "Jon", LastName: "Rahm", TotalScore: -4, IsWithdrawn: false, TotalStrokes: 284, Par: 72 },
-  { PlayerID: 5, FirstName: "Justin", LastName: "Thomas", TotalScore: -3, IsWithdrawn: false, TotalStrokes: 285, Par: 72 },
-  { PlayerID: 6, FirstName: "Scottie", LastName: "Scheffler", TotalScore: -2, IsWithdrawn: false, TotalStrokes: 286, Par: 72 },
-  { PlayerID: 7, FirstName: "Collin", LastName: "Morikawa", TotalScore: -1, IsWithdrawn: false, TotalStrokes: 287, Par: 72 },
-  { PlayerID: 8, FirstName: "Patrick", LastName: "Cantlay", TotalScore: 0, IsWithdrawn: false, TotalStrokes: 288, Par: 72 },
-  { PlayerID: 9, FirstName: "Xander", LastName: "Schauffele", TotalScore: 1, IsWithdrawn: false, TotalStrokes: 289, Par: 72 },
-  { PlayerID: 10, FirstName: "Viktor", LastName: "Hovland", TotalScore: 2, IsWithdrawn: false, TotalStrokes: 290, Par: 72 },
-  { PlayerID: 11, FirstName: "Eric", LastName: "Grandmaison", TotalScore: -9, IsWithdrawn: false, TotalStrokes: 290, Par: 72 },
-  { PlayerID: 12, FirstName: "Mike", LastName: "DiChiara", TotalScore: 2, IsWithdrawn: false, TotalStrokes: 290, Par: 72 },
-  { PlayerID: 13, FirstName: "Alan", LastName: "DeLorenzo", TotalScore: -7, IsWithdrawn: false, TotalStrokes: 290, Par: 72 },
-  { PlayerID: 14, FirstName: "Matt", LastName: "Houde", TotalScore: -6, IsWithdrawn: false, TotalStrokes: 290, Par: 72 },
+  { PlayerID: 1, FirstName: "Rory", LastName: "McIlroy", TotalScore: -8, IsWithdrawn: false, TotalStrokes: 280, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 2, FirstName: "Jordan", LastName: "Spieth", TotalScore: -6, IsWithdrawn: false, TotalStrokes: 282, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 3, FirstName: "Brooks", LastName: "Koepka", TotalScore: -5, IsWithdrawn: false, TotalStrokes: 283, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 4, FirstName: "Jon", LastName: "Rahm", TotalScore: -4, IsWithdrawn: false, TotalStrokes: 284, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 5, FirstName: "Justin", LastName: "Thomas", TotalScore: -3, IsWithdrawn: false, TotalStrokes: 285, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 6, FirstName: "Scottie", LastName: "Scheffler", TotalScore: -2, IsWithdrawn: false, TotalStrokes: 286, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 7, FirstName: "Collin", LastName: "Morikawa", TotalScore: -1, IsWithdrawn: false, TotalStrokes: 287, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 8, FirstName: "Patrick", LastName: "Cantlay", TotalScore: 0, IsWithdrawn: false, TotalStrokes: 288, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 9, FirstName: "Xander", LastName: "Schauffele", TotalScore: 1, IsWithdrawn: false, TotalStrokes: 289, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 10, FirstName: "Viktor", LastName: "Hovland", TotalScore: 2, IsWithdrawn: false, TotalStrokes: 290, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 11, FirstName: "Eric", LastName: "Grandmaison", TotalScore: -9, IsWithdrawn: false, TotalStrokes: 290, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 12, FirstName: "Mike", LastName: "DiChiara", TotalScore: 2, IsWithdrawn: false, TotalStrokes: 290, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 13, FirstName: "Alan", LastName: "DeLorenzo", TotalScore: -7, IsWithdrawn: false, TotalStrokes: 290, Par: 72, PlayerRoundScore: [] },
+  { PlayerID: 14, FirstName: "Matt", LastName: "Houde", TotalScore: -6, IsWithdrawn: false, TotalStrokes: 290, Par: 72, PlayerRoundScore: [] },
 ];
 
 type Tab = 'standings' | 'players' | 'teams' | 'results';
 
 interface TournamentDetailProps {
   tournamentId?: string;
+}
+
+interface Profile {
+  team_name: string;
+  team_color?: string;
+}
+
+interface Entry {
+  id: string;
+  user_id: string;
+  status: string;
+  profiles: Profile | Profile[];
+  team_players?: { player_id: number }[];
+}
+
+interface SupabaseUser {
+  id: string;
 }
 
 export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps) {
@@ -81,24 +91,26 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   const [error, setError] = useState<string | null>(null);
   const [playerOdds, setPlayerOdds] = useState<PlayerOdds[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('standings');
-  const [user, setUser] = useState<any>(null);
-  const [entries, setEntries] = useState<Record<number, TournamentEntry[]>>({});
-  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [entries, setEntries] = useState<Record<number, Entry[]>>({});
+  const [tournament] = useState<Tournament | null>(null);
   const [teamSelectionMessage, setTeamSelectionMessage] = useState<string>('');
   const [showTeamSelectionMessage, setShowTeamSelectionMessage] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isFutureTournament, setIsFutureTournament] = useState(false);
   const [wasUnregistered, setWasUnregistered] = useState(false);
   const [registeredTeams, setRegisteredTeams] = useState<Array<{ team_name: string; team_color: string; }>>([]);
-  const [userHasAccess, setUserHasAccess] = useState(true);
+
+  const tournamentIdNum = tournamentId ? parseInt(tournamentId) : 0;
 
   const renderStandings = () => {
     const isFutureTournament = tournament && new Date(tournament.StartDate) > new Date();
-    const isRegistered = user?.user && entries[parseInt(tournamentId)]?.some(
-      e => e.user_id === user.user.id
+    const isRegistered = user?.id && entries[tournamentIdNum]?.some(
+      e => e.user_id === user.id
     );
-    const userEntry = user?.user && entries[parseInt(tournamentId)]?.find(e => e.user_id === user.user.id);
-    const userTeamPlayers = teamPlayers.filter(tp => tp.entry_id === userEntry?.id);
+    const userEntry = user?.id && entries[tournamentIdNum]?.find(e => e.user_id === user.id);
+    const userEntryId = typeof userEntry === 'object' && userEntry !== null && 'id' in userEntry ? userEntry.id : undefined;
+    const userTeamPlayers = teamPlayers.filter(tp => tp.entry_id === userEntryId);
 
     return (
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -294,99 +306,60 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     }
   }
 
-  // Auth state management
+  // Move fetchEntries out of useEffect so it can be called elsewhere
+  async function fetchEntries() {
+    const { data: entriesData } = await supabase
+      .from('tournament_entries')
+      .select('id, user_id, status, team_players(player_id), profiles!inner(team_name, team_color)')
+      .eq('tournament_id', tournamentId)
+      .eq('status', 'registered')
+      .order('created_at', { ascending: true });
+
+    if (entriesData) {
+      setEntries({ [tournamentIdNum]: entriesData });
+      if (user?.id) {
+        const userEntry = entriesData.find((e: Entry) => e.user_id === user.id);
+        setIsRegistered(!!userEntry);
+      }
+      // Extract registered teams
+      const teams = entriesData.map((entry: Entry) => ({
+        team_name: (Array.isArray(entry.profiles) ? entry.profiles[0]?.team_name : entry.profiles.team_name) || 'Unknown Team',
+        team_color: (Array.isArray(entry.profiles) ? entry.profiles[0]?.team_color : entry.profiles.team_color) || 'Blue',
+      }));
+      setRegisteredTeams(teams);
+    }
+  }
+
+  useEffect(() => {
+    fetchEntries();
+  }, [tournamentId, user]);
+
+  // Fix setUser usage for Supabase session
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session);
+      if (session?.user) setUser({ id: session.user.id });
+      else setUser(null);
     });
-    
     supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser({ user });
+      if (user) setUser({ id: user.id });
+      else setUser(null);
     });
-    
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
-    async function fetchEntries() {
-      const { data: entriesData } = await supabase
-        .from('tournament_entries')
-        .select('id, user_id, status, team_players(player_id), profiles!inner(team_name, team_color)')
-        .eq('tournament_id', tournamentId)
-        .eq('status', 'registered')
-        .order('created_at', { ascending: true });
-
-      if (entriesData) {
-        setEntries({ [parseInt(tournamentId)]: entriesData });
-        if (user?.user) {
-          const userEntry = entriesData.find(e => e.user_id === user.user.id);
-          setIsRegistered(!!userEntry);
-        }
-        
-        // Extract registered teams
-        const teams = entriesData.map(entry => ({
-          team_name: entry.profiles.team_name,
-          team_color: entry.profiles.team_color || 'Blue'
-        }));
-        setRegisteredTeams(teams);
-      }
-    }
-
-    fetchEntries();
-  }, [tournamentId, user]);
-
-  async function handleRegister() {
-    if (!user?.user) return;
-
-    if (tournament) {
-      const now = new Date();
-      const startDate = new Date(tournament.StartDate);
-      
-      if (startDate <= now) {
-        alert('Registration is closed. This tournament has already started.');
-        return;
-      }
-    }
-
-    try {
-      const { error } = await supabase
-        .from('tournament_entries')
-        .insert([
-          { tournament_id: parseInt(tournamentId), user_id: user.user.id }
-        ]);
-
-      if (error) throw error;
-      setIsRegistered(true);
-      await fetchEntries();
-    } catch (err) {
-      console.error('Error registering for tournament:', err);
-    }
-  }
-
-  useEffect(() => {
     async function fetchTournamentDetails() {
       try {
         // Check if user was unregistered from this tournament
         // Check if user has access through leagues
-        if (user?.user) {
-          const { data: leagueAccess } = await supabase
-            .from('league_tournaments')
-            .select(`
-              league_id,
-              league_members!inner(user_id)
-            `)
-            .eq('tournament_id', tournamentId)
-            .eq('league_members.user_id', user.user.id);
-
-          setUserHasAccess(!!leagueAccess?.length);
-
+        if (user?.id) {
           const { data: entry } = await supabase
             .from('tournament_entries')
             .select('status')
             .eq('tournament_id', tournamentId)
-            .eq('user_id', user.user.id)
+            .eq('user_id', user.id)
             .single();
 
           setWasUnregistered(entry?.status === 'unregistered');
@@ -459,10 +432,10 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             }
           }));
           
-          if (user?.user) {
+          if (user?.id) {
             const userTeamPlayers = formattedTeamPlayers.filter(tp => 
-              entries[parseInt(tournamentId)]?.some(e => 
-                e.user_id === user.user.id && e.id === tp.entry_id
+              entries[tournamentIdNum]?.some(e => 
+                e.user_id === user.id && e.id === tp.entry_id
               )
             );
             setSelectedPlayers(userTeamPlayers.map(tp => tp.player_id));
@@ -481,10 +454,16 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     fetchTournamentDetails();
   }, [tournamentId, user, entries, tournament]);
 
+  useEffect(() => {
+    if (tournament) {
+      setIsFutureTournament(new Date(tournament.StartDate) > new Date());
+    }
+  }, [tournament]);
+
   async function handlePlayerSelection(playerId: number) {
-    if (!user?.user) return;
+    if (!user) return;
     
-    const userEntry = entries[parseInt(tournamentId)]?.find(e => e.user_id === user.user.id);
+    const userEntry = entries[tournamentIdNum]?.find(e => e.user_id === user.id);
     if (!userEntry) return;
 
     const { data: currentTeamPlayers } = await supabase
@@ -565,6 +544,45 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     }
   }, [selectedPlayers]);
 
+  async function handleRegister() {
+    if (!user) return;
+    if (tournament) {
+      const now = new Date();
+      const startDate = new Date(tournament.StartDate);
+      if (startDate <= now) {
+        alert('Registration is closed. This tournament has already started.');
+        return;
+      }
+    }
+    try {
+      const { error } = await supabase
+        .from('tournament_entries')
+        .insert([
+          { tournament_id: tournamentIdNum, user_id: user.id }
+        ]);
+      if (error) throw error;
+      setIsRegistered(true);
+      await fetchEntries();
+    } catch (err) {
+      console.error('Error registering for tournament:', err);
+    }
+  }
+
+  async function handleUnregister() {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('tournament_entries')
+        .delete()
+        .match({ tournament_id: tournamentIdNum, user_id: user.id });
+      if (error) throw error;
+      setIsRegistered(false);
+      await fetchEntries();
+    } catch (err) {
+      console.error('Error unregistering from tournament:', err);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -577,12 +595,6 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     return (
       <div className="text-center py-12">
         <p className="text-red-600">{error}</p>
-        <Link
-          to="/leagues"
-          className="inline-flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors mt-4"
-        >
-          <span>Browse Leagues</span>
-        </Link>
       </div>
     );
   }
@@ -590,118 +602,98 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        {user?.user && !userHasAccess ? (
-          <div className="text-center py-12 w-full">
-            <p className="text-gray-600 mb-4">
-              You don't have access to this tournament. Join a league that includes this tournament to participate.
-            </p>
-            <Link
-              to="/leagues"
-              className="inline-flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
+        <div className="flex items-center space-x-4 flex-1">
+          <Link
+            to="/tournaments"
+            className="flex items-center text-green-600 hover:text-green-700 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Back
+          </Link>
+          {showTeamSelectionMessage && user?.id && isRegistered && (
+            <div className={`px-4 py-2 rounded-lg ${
+              selectedPlayers.length === 3
+                ? 'bg-green-100 text-green-700'
+                : 'bg-blue-100 text-blue-700'
+            }`}>
+              {teamSelectionMessage}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center space-x-4">
+          {isFutureTournament && user?.id && !isRegistered && (
+            <button
+              onClick={handleRegister}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
             >
-              <span>Browse Leagues</span>
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center space-x-4 flex-1">
-              <Link
-                to="/tournaments"
-                className="flex items-center text-green-600 hover:text-green-700 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                Back
-              </Link>
-              {showTeamSelectionMessage && user?.user && isRegistered && (
-                <div className={`px-4 py-2 rounded-lg ${
-                  selectedPlayers.length === 3
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {teamSelectionMessage}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center space-x-4">
-              {isFutureTournament && user?.user && !isRegistered && (
-                <button
-                  onClick={handleRegister}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  Register for Tournament
-                </button>
-              )}
-              <Trophy className="h-6 w-6 text-green-600" />
-              <span className="text-lg font-semibold text-gray-900">{tournament?.Name || 'Tournament Details'}</span>
-            </div>
-          </>
-        )}
+              Register for Tournament
+            </button>
+          )}
+          {isFutureTournament && user?.id && isRegistered && (
+            <button
+              onClick={handleUnregister}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Unregister
+            </button>
+          )}
+          <Trophy className="h-6 w-6 text-green-600" />
+          <span className="text-lg font-semibold text-gray-900">{tournament?.Name || 'Tournament Details'}</span>
+        </div>
       </div>
 
-      {!user?.user && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-blue-700">
-            Sign in and join a league to participate in tournaments.
+      {wasUnregistered && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-700">
+            You were unregistered from this tournament. Please contact support if you believe this was in error.
           </p>
         </div>
       )}
 
-      {user?.user && !userHasAccess ? null : (
-        <>
-          {wasUnregistered && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700">
-                You were unregistered from this tournament. Please contact support if you believe this was in error.
-              </p>
-            </div>
-          )}
-
-          <div className="overflow-x-auto pb-2 mb-6 -mx-4 px-4">
-            <div className="flex flex-wrap gap-2 min-w-max">
-              <TabButton
-                active={activeTab === 'standings'} 
-                onClick={() => setActiveTab('standings')} 
-                icon={isFutureTournament ? <PenTool /> : <Trophy />}
-                text={isFutureTournament ? 'Draft' : 'Leaderboard'}
-                fullText={isFutureTournament ? 'Draft Central' : 'Tournament Leaderboard'}
-              />
-              <TabButton
-                active={activeTab === 'players'}
-                onClick={() => setActiveTab('players')}
-                icon={<Users className="h-5 w-5 text-blue-500" />}
-                text="Players"
-                fullText="Drafted Players"
-              />
-              <TabButton
-                active={activeTab === 'teams'}
-                onClick={() => setActiveTab('teams')}
-                icon={<Users />}
-                text="Teams"
-                fullText="Team Leaderboard"
-              />
-              <TabButton
-                active={activeTab === 'results'}
-                onClick={() => setActiveTab('results')}
-                icon={<Trophy />}
-                text="Results"
-                fullText="Results"
-              />
-            </div>
-          </div>
-          {activeTab === 'standings' && renderStandings()}
-          {activeTab === 'players' && (
-            <DraftedPlayers
-              players={players}
-              teamPlayers={teamPlayers}
-              getPlayerStatus={getPlayerStatus}
-              calculatePlayerScore={calculatePlayerScore}
-              renderPlayerScore={renderPlayerScore}
-            />
-          )}
-          {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
-          {activeTab === 'results' && <TournamentResults teamScores={teamScores} tournament={tournament} players={players} />}
-        </>
+      <div className="overflow-x-auto pb-2 mb-6 -mx-4 px-4">
+        <div className="flex flex-wrap gap-2 min-w-max">
+          <TabButton
+            active={activeTab === 'standings'} 
+            onClick={() => setActiveTab('standings')} 
+            icon={isFutureTournament ? <PenTool /> : <Trophy />}
+            text={isFutureTournament ? 'Draft' : 'Leaderboard'}
+            fullText={isFutureTournament ? 'Draft Central' : 'Tournament Leaderboard'}
+          />
+          <TabButton
+            active={activeTab === 'players'}
+            onClick={() => setActiveTab('players')}
+            icon={<Users className="h-5 w-5 text-blue-500" />}
+            text="Players"
+            fullText="Drafted Players"
+          />
+          <TabButton
+            active={activeTab === 'teams'}
+            onClick={() => setActiveTab('teams')}
+            icon={<Users />}
+            text="Teams"
+            fullText="Team Leaderboard"
+          />
+          <TabButton
+            active={activeTab === 'results'}
+            onClick={() => setActiveTab('results')}
+            icon={<Trophy />}
+            text="Results"
+            fullText="Results"
+          />
+        </div>
+      </div>
+      {activeTab === 'standings' && renderStandings()}
+      {activeTab === 'players' && (
+        <DraftedPlayers
+          players={players}
+          teamPlayers={teamPlayers}
+          getPlayerStatus={getPlayerStatus}
+          calculatePlayerScore={calculatePlayerScore}
+          renderPlayerScore={renderPlayerScore}
+        />
       )}
+      {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
+      {activeTab === 'results' && <TournamentResults teamScores={teamScores} tournament={tournament} players={players} />}
     </div>
   );
 }

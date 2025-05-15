@@ -2,10 +2,13 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Navigation } from './Navigation';
 import { Trophy, Users, Book } from 'lucide-react';
+import { LeaderboardFooter } from './LeaderboardFooter';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
+
+const ENABLE_LEAGUES = import.meta.env.VITE_ENABLE_LEAGUES === 'true';
 
 export function Layout({ children }: LayoutProps) {
   return (
@@ -42,13 +45,15 @@ export function Layout({ children }: LayoutProps) {
                   <Trophy className="h-5 w-5" />
                   <span>Tournaments</span>
                 </Link>
-                <Link 
-                  to="/league" 
-                  className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
-                >
-                  <Users className="h-5 w-5" />
-                  <span>League Overview</span>
-                </Link>
+                {ENABLE_LEAGUES && (
+                  <Link 
+                    to="/league" 
+                    className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                  >
+                    <Users className="h-5 w-5" />
+                    <span>League Overview</span>
+                  </Link>
+                )}
                 <Link 
                   to="/rules" 
                   className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
@@ -71,6 +76,9 @@ export function Layout({ children }: LayoutProps) {
                 </p>
               </div>
             </div>
+          </div>
+          <div className="mt-12">
+            <LeaderboardFooter />
           </div>
         </div>
       </footer>
