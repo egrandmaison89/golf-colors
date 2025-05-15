@@ -24,6 +24,7 @@ export function Home() {
   const [loading, setLoading] = useState(true);
   const [currentTournament, setCurrentTournament] = useState<Tournament | null>(null);
   const [mostRecentCompleted, setMostRecentCompleted] = useState<Tournament | null>(null);
+  const [recentWinners, setRecentWinners] = useState<{ team_names: string[], tournament_name: string } | null>(null);
 
   useEffect(() => {
     async function fetchTournaments() {
@@ -194,6 +195,44 @@ export function Home() {
     fetchTournaments();
   }, []);
 
+  useEffect(() => {
+    async function fetchRecentWinners() {
+      // 1. Get the most recent completed tournament with >1 team
+      const { data: tournaments } = await supabase
+        .from('tournaments')
+        .select('*')
+        .order('EndDate', { ascending: false });
+      if (!tournaments) return;
+
+      for (const tournament of tournaments) {
+        // Get all results for this tournament
+        const { data: results } = await supabase
+          .from('tournament_results')
+          .select('team_name, total_score')
+          .eq('tournament_id', tournament.TournamentID);
+
+        if (results && results.length > 1) {
+          // Find the lowest score
+          const lowest = Math.min(...results.map(r => r.total_score));
+          // Find all teams with the lowest score (ties)
+          const winningTeams = results.filter(r => r.total_score === lowest).map(r => r.team_name);
+
+          // Only show if the tournament ended before today
+          const endDate = new Date(tournament.EndDate);
+          const now = new Date();
+          if (endDate < now) {
+            setRecentWinners({
+              team_names: winningTeams,
+              tournament_name: tournament.Name,
+            });
+            break;
+          }
+        }
+      }
+    }
+    fetchRecentWinners();
+  }, []);
+
   return (
     <div className="space-y-16">
       {/* Hero Section */}
@@ -263,57 +302,19 @@ export function Home() {
       )}
 
       {/* Winner Callout */}
-      {!loading && leaderboard.length > 0 && (
-        <section className="bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl shadow-lg p-8 max-w-4xl mx-auto border border-green-100">
-          {winningTeam && !currentTournament && mostRecentCompleted ? (
-            <div className="flex items-center space-x-4">
-              <Trophy className="h-12 w-12 text-yellow-500" />
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">
-                  Congratulations to {winningTeam.team_name}!
-                </h2>
-                <p className="text-gray-600">
-                  Winner of the {winningTeam.tournament_name} with a team score of {winningTeam.total_score}
-                </p>
-              </div>
+      {!loading && recentWinners && (
+        <section className="bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl shadow-lg p-8 max-w-4xl mx-auto border border-green-100 mb-8">
+          <div className="flex items-center space-x-4">
+            <Trophy className="h-12 w-12 text-yellow-500" />
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">
+                Congratulations to {recentWinners.team_names.join(' & ')}!
+              </h2>
+              <p className="text-gray-600">
+                Winner{recentWinners.team_names.length > 1 ? 's' : ''} of the {recentWinners.tournament_name}.
+              </p>
             </div>
-          ) : currentTournament ? (
-            <div className="flex items-center space-x-4">
-              <Trophy className="h-12 w-12 text-green-600" />
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">
-                  Tournament in Progress!
-                </h2>
-                <p className="text-gray-600">
-                  The {currentTournament.Name} is currently underway.{' '}
-                  <Link 
-                    to={`/tournament/${currentTournament.TournamentID}`}
-                    className="text-green-600 hover:text-green-700 font-medium"
-                  >
-                    View live results
-                  </Link>
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-4">
-              <Trophy className="h-12 w-12 text-blue-500" />
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">
-                  Join Our Next Tournament!
-                </h2>
-                <p className="text-gray-600">
-                  <Link 
-                    to="/tournaments"
-                    className="text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    Register now
-                  </Link>
-                  {' '}for upcoming tournaments and compete for prizes.
-                </p>
-              </div>
-            </div>
-          )}
+          </div>
         </section>
       )}
 
