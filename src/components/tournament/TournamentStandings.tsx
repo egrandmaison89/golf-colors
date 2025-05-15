@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserX } from 'lucide-react';
-import type { Player } from '../../types/tournament';
+import type { Player, TeamPlayer } from '../../types/tournament';
 
 interface TournamentStandingsProps {
   players: Player[];
@@ -8,7 +8,7 @@ interface TournamentStandingsProps {
   playerOdds: Array<{ PlayerID: number; OddsToWin: number }>;
   isRegistered: boolean;
   selectedPlayers: number[];
-  teamPlayers: any[];
+  teamPlayers: TeamPlayer[];
   onPlayerSelection: (playerId: number) => void;
   getPlayerStatus: (player: Player) => 'active' | 'cut' | 'withdrawn';
   calculatePlayerScore: (player: Player, allPlayers: Player[]) => number;
@@ -40,6 +40,9 @@ export function TournamentStandings({
                 {isFutureTournament ? 'Odds to Win' : 'Total Score'}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                THRU
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
               {isFutureTournament && isRegistered && (
@@ -51,12 +54,30 @@ export function TournamentStandings({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {players.map((player) => {
+              // Debug log for PlayerRoundScore
+              console.log('Player:', player.FirstName, player.LastName, 'PlayerRoundScore:', player.PlayerRoundScore);
               const status = getPlayerStatus(player);
               const score = calculatePlayerScore(player, players);
               const isPlayerSelected = selectedPlayers.includes(player.PlayerID);
               const isPlayerTaken = teamPlayers.some(tp => 
                 tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
               );
+              // Find today's round (robust logic)
+              const today = new Date().toISOString().slice(0, 10);
+              let progress = '';
+              let roundToday = undefined;
+              if (Array.isArray(player.PlayerRoundScore)) {
+                roundToday = player.PlayerRoundScore.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+              }
+              if (roundToday) {
+                if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
+                  progress = `Thru ${roundToday.Thru}`;
+                } else if (roundToday.Thru === 18) {
+                  progress = 'F';
+                } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                  progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+              }
               
               return (
                 <tr
@@ -80,6 +101,9 @@ export function TournamentStandings({
                         renderPlayerScore(player, score, status)
                       )}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-700">{progress}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {isFutureTournament ? (
