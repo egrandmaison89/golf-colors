@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Trophy, Users, UserCircle, Settings, X, Menu } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import { AccountModal } from './AccountModal';
@@ -185,6 +185,7 @@ export function Navigation() {
 }
 
 function NavLinks({ user, mobile = false }: { user: any; mobile?: boolean }) {
+  const location = useLocation();
   return (
     <>
       <NavLink 
@@ -192,6 +193,7 @@ function NavLinks({ user, mobile = false }: { user: any; mobile?: boolean }) {
         icon={<Trophy className="h-5 w-5 text-yellow-500" />} 
         text="Tournaments"
         mobile={mobile}
+        active={location.pathname.startsWith('/tournaments')}
       />
       {user?.user && (
         <NavLink 
@@ -199,6 +201,7 @@ function NavLinks({ user, mobile = false }: { user: any; mobile?: boolean }) {
           icon={<Users className="h-5 w-5 text-blue-500" />} 
           text="My Results"
           mobile={mobile}
+          active={location.pathname.startsWith('/my-results')}
         />
       )}
     </>
@@ -209,19 +212,21 @@ function NavLink({
   href, 
   icon, 
   text,
-  mobile = false 
+  mobile = false,
+  active = false
 }: { 
   href: string; 
   icon: React.ReactNode; 
   text: string;
   mobile?: boolean;
+  active?: boolean;
 }) {
   return (
     <Link
       to={href}
       className={`flex items-center space-x-2 text-gray-600 hover:text-green-600 transition-colors ${
         mobile ? 'w-full px-4 py-2 hover:bg-gray-50' : ''
-      }`}
+      } ${active ? 'font-bold underline text-green-700' : ''}`}
     >
       {icon}
       <span>{text}</span>

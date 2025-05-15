@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Trophy, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Tournament } from '../types/tournament';
-import { calculatePlayerScore, getPlayerStatus } from '../utils/tournament';
+import { calculatePlayerScore } from '../utils/tournament';
 
 const API_KEY = import.meta.env.VITE_SPORTSDATA_API_KEY;
 
@@ -87,7 +87,7 @@ export function MyResults() {
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="text-sm text-gray-500 mb-2">Total Earnings</div>
+          <div className="text-sm text-gray-500 mb-2">Team Earnings</div>
           <div className={`text-3xl font-bold ${stats.totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             ${stats.totalEarnings >= 0 ? '+' : ''}{stats.totalEarnings}
           </div>
@@ -411,7 +411,7 @@ export function useMyResults(): UseMyResultsReturn {
     averageFinish: completedTournamentsWithFullTeam.length > 0
       ? (completedTournamentsWithFullTeam.reduce((sum, r) => sum + r.place, 0) / completedTournamentsWithFullTeam.length).toFixed(1)
       : 'N/A',
-    totalEarnings: completedTournaments.reduce((sum, r) => sum + r.earnings, 0)
+    totalEarnings: completedTournaments.reduce((sum, r) => sum + (r.earnings - r.winnerBonus), 0)
   };
 
   return {

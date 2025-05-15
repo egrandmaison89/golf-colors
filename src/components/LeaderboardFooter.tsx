@@ -6,6 +6,7 @@ interface LeaderboardEntry {
   team_name: string;
   team_color: string;
   totalEarnings: number;
+  totalBounties: number;
   totalWins: number;
   tournamentsPlayed: number;
   averageFinish: string;
@@ -36,7 +37,8 @@ export function LeaderboardFooter() {
           const averageFinish = completedResults.length > 0
             ? (completedResults.reduce((sum, r) => sum + r.place, 0) / completedResults.length).toFixed(1)
             : 'N/A';
-          const totalEarnings = results?.reduce((sum, r) => sum + (r.earnings || 0) + (r.winner_bonus || 0), 0) || 0;
+          const totalEarnings = results?.reduce((sum, r) => sum + (r.earnings || 0), 0) || 0;
+          const totalBounties = results?.reduce((sum, r) => sum + (r.winner_bonus || 0), 0) || 0;
           const totalWins = results?.filter(r => r.place === 1).length || 0;
           const combinedScore = completedResults.reduce((sum, r) => sum + (r.total_score || 0), 0);
 
@@ -44,6 +46,7 @@ export function LeaderboardFooter() {
             team_name: profile.team_name,
             team_color: profile.team_color || 'Blue',
             totalEarnings,
+            totalBounties,
             totalWins,
             tournamentsPlayed,
             averageFinish,
@@ -51,7 +54,7 @@ export function LeaderboardFooter() {
           };
         })
       );
-      setLeaderboard(leaderboardData.sort((a, b) => b.totalEarnings - a.totalEarnings));
+      setLeaderboard(leaderboardData.sort((a, b) => (b.totalEarnings + b.totalBounties) - (a.totalEarnings + a.totalBounties)));
       setLoading(false);
     }
     fetchLeaderboard();
@@ -75,13 +78,14 @@ export function LeaderboardFooter() {
         <table className="min-w-full text-sm text-white">
           <thead>
             <tr className="bg-gradient-to-r from-green-800 via-blue-800 to-red-800">
-              <th className="px-4 py-2 text-left">Rank</th>
-              <th className="px-4 py-2 text-left">Team</th>
-              <th className="px-4 py-2 text-right">Earnings</th>
-              <th className="px-4 py-2 text-right">Wins</th>
-              <th className="px-4 py-2 text-right">Played</th>
-              <th className="px-4 py-2 text-right">Avg Finish</th>
-              <th className="px-4 py-2 text-right">Combined Score</th>
+              <th className="px-4 py-2 text-left" title="Leaderboard rank">Rank</th>
+              <th className="px-4 py-2 text-left" title="Team name and color">Team</th>
+              <th className="px-4 py-2 text-right" title="Total earnings (excluding bounties)">Earnings</th>
+              <th className="px-4 py-2 text-right" title="Total bounties for picking tournament winners">Bounties</th>
+              <th className="px-4 py-2 text-right" title="Number of tournament wins">Wins</th>
+              <th className="px-4 py-2 text-right" title="Number of tournaments played">Played</th>
+              <th className="px-4 py-2 text-right" title="Average finishing position">Avg Finish</th>
+              <th className="px-4 py-2 text-right" title="Sum of all scores for completed tournaments">Combined Score</th>
             </tr>
           </thead>
           <tbody>
@@ -104,13 +108,17 @@ export function LeaderboardFooter() {
                 </td>
                 <td className="px-4 py-2 flex items-center gap-2">
                   <span
-                    className="inline-block w-3 h-3 rounded-full border border-white"
+                    className="inline-block w-5 h-5 rounded-full border-2 border-white shadow"
                     style={{ backgroundColor: entry.team_color.toLowerCase() }}
+                    title={`Team color: ${entry.team_color}`}
                   ></span>
                   <span className="font-medium">{entry.team_name}</span>
                 </td>
                 <td className="px-4 py-2 text-right">
                   ${entry.totalEarnings >= 0 ? '+' : ''}{entry.totalEarnings}
+                </td>
+                <td className="px-4 py-2 text-right">
+                  ${entry.totalBounties >= 0 ? '+' : ''}{entry.totalBounties}
                 </td>
                 <td className="px-4 py-2 text-right">{entry.totalWins}</td>
                 <td className="px-4 py-2 text-right">{entry.tournamentsPlayed}</td>

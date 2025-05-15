@@ -17,6 +17,12 @@ export function Layout({ children }: LayoutProps) {
       <main className="container mx-auto px-4 py-8">
         {children}
       </main>
+      <div className="container mx-auto px-4" style={{ marginBottom: '60px' }}>
+        <div className="mt-10">
+            <LeaderboardFooter />
+        </div>  
+      </div>
+
       <footer className="bg-gradient-to-br from-green-900 via-blue-900 to-red-900 text-white py-16 mt-auto">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-12">
@@ -78,7 +84,6 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="mt-12">
-            <LeaderboardFooter />
           </div>
         </div>
       </footer>

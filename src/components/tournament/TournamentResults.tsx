@@ -1,20 +1,18 @@
 import React from 'react';
 import { Trophy } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
 import type { TeamScore } from '../../types/tournament';
 
 interface TournamentResultsProps {
   teamScores: TeamScore[];
-  tournament: {
-    TournamentID: number;
-    StartDate: string;
-    EndDate: string;
-    Name?: string;
-  } | null;
-  players: any[];
+  players: {
+    PlayerID: number;
+    TotalScore: number | null;
+    // Add other relevant fields if needed
+  }[];
+  registeredTeams: { team_name: string; team_color: string }[];
 }
 
-export function TournamentResults({ teamScores, tournament, players }: TournamentResultsProps) {
+export function TournamentResults({ teamScores, players, registeredTeams }: TournamentResultsProps) {
   if (!teamScores.length) {
     return (
       <div className="text-center py-12">
@@ -91,51 +89,6 @@ export function TournamentResults({ teamScores, tournament, players }: Tournamen
     }
   });
 
-  const startDate = new Date(tournament?.StartDate || '');
-  const endDate = new Date(tournament?.EndDate || '');
-  const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  
-  const chartData = {
-    labels: Array.from({ length: totalDays }, (_, i) => `Day ${i + 1}`),
-    datasets: teamScores.map(team => ({
-      label: team.team_name,
-      data: Array.from({ length: totalDays }, (_, i) => {
-        const progress = (i + 1) / totalDays;
-        return Math.round(team.total_score * progress);
-      }),
-      borderColor: team.team_color?.toLowerCase() || 'blue',
-      backgroundColor: team.team_color?.toLowerCase() || 'blue',
-      tension: 0.1
-    }))
-  };
-
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-      },
-      title: {
-        display: true,
-        text: 'Team Score Progression'
-      }
-    },
-    scales: {
-      y: {
-        title: {
-          display: true,
-          text: 'Total Score'
-        }
-      },
-      x: {
-        title: {
-          display: true,
-          text: 'Tournament Progress'
-        }
-      }
-    }
-  };
-
   return (
     <div className="space-y-8">
       {winningTeams.map((team, index) => (
@@ -156,7 +109,7 @@ export function TournamentResults({ teamScores, tournament, players }: Tournamen
               <div className="flex items-center space-x-2">
                 <div 
                   className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: team.team_color?.toLowerCase() || 'blue' }}
+                  style={{ backgroundColor: (registeredTeams.find(rt => rt.team_name === team.team_name)?.team_color?.toLowerCase() || '#3b82f6') }}
                 />
                 <p className="text-lg font-medium text-green-900">{team.team_name}</p>
               </div>
@@ -177,7 +130,7 @@ export function TournamentResults({ teamScores, tournament, players }: Tournamen
                 <div className="flex items-center space-x-2">
                   <div 
                     className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: team.team_color?.toLowerCase() || 'blue' }}
+                    style={{ backgroundColor: (registeredTeams.find(rt => rt.team_name === team.team_name)?.team_color?.toLowerCase() || '#3b82f6') }}
                   />
                   <p className="font-medium text-gray-900">{team.team_name}</p>
                 </div>
@@ -198,13 +151,6 @@ export function TournamentResults({ teamScores, tournament, players }: Tournamen
               </div>
             </div>
           ))}
-        </div>
-      </div>
-      
-       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Score Progression</h3>
-        <div className="h-[400px]">
-          <Line data={chartData} options={chartOptions} />
         </div>
       </div>
     </div> 

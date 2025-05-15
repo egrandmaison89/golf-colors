@@ -93,7 +93,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   const [activeTab, setActiveTab] = useState<Tab>('standings');
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [entries, setEntries] = useState<Record<number, Entry[]>>({});
-  const [tournament] = useState<Tournament | null>(null);
+  const [tournament, setTournament] = useState<Tournament | null>(null);
   const [teamSelectionMessage, setTeamSelectionMessage] = useState<string>('');
   const [showTeamSelectionMessage, setShowTeamSelectionMessage] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
@@ -365,12 +365,24 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
           setWasUnregistered(entry?.status === 'unregistered');
         }
 
-        let sortedPlayers: Player[];
-        const isFutureTournament = tournament && new Date(tournament.StartDate) > new Date();
+        // Only fetch tournament if not already set
+        if (!tournament) {
+          // Try to get from local cache first (if you have one)
+          // Otherwise, fetch from SportsData API
+          const tournamentResp = await fetch(`https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`);
+          if (tournamentResp.ok) {
+            const tournaments: Tournament[] = await tournamentResp.json();
+            const found = tournaments.find(t => t.TournamentID === Number(tournamentId));
+            if (found) setTournament(found);
+          }
+        }
 
+        let sortedPlayers: Player[];
         if (tournamentId === '999999') {
           sortedPlayers = MOCK_PLAYERS;
         } else {
+          // Use tournament to determine if future
+          const isFutureTournament = tournament && new Date(tournament.StartDate) > new Date();
           if (isFutureTournament) {
             const oddsResponse = await fetch(
               `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`
@@ -394,8 +406,8 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
 
                 const processedOdds = Array.from(playerOddsMap.entries()).map(([PlayerID, OddsToWin]) => ({
                   PlayerID,
-                  Name: sortedPlayers.find(p => p.PlayerID === PlayerID)?.FirstName + ' ' + 
-                       sortedPlayers.find(p => p.PlayerID === PlayerID)?.LastName,
+                  Name: playersData.find((p: Player) => p.PlayerID === PlayerID)?.FirstName + ' ' + 
+                       playersData.find((p: Player) => p.PlayerID === PlayerID)?.LastName,
                   OddsToWin
                 }));
                 setPlayerOdds(processedOdds);
@@ -638,7 +650,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             </button>
           )}
           <Trophy className="h-6 w-6 text-green-600" />
-          <span className="text-lg font-semibold text-gray-900">{tournament?.Name || 'Tournament Details'}</span>
+          <span className="text-lg font-semibold text-gray-900">{tournament?.Name || 'Loading...'}</span>
         </div>
       </div>
 
@@ -693,7 +705,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
         />
       )}
       {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
-      {activeTab === 'results' && <TournamentResults teamScores={teamScores} tournament={tournament} players={players} />}
+      {activeTab === 'results' && <TournamentResults teamScores={teamScores} players={players} registeredTeams={registeredTeams} />}
     </div>
   );
 }
