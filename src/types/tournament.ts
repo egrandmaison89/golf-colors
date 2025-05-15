@@ -16,6 +16,15 @@ export interface Player {
   TotalStrokes: number;
   Par: number;
   PlayerRoundScore: PlayerRound[];
+  // Biographical fields
+  BirthDate?: string;
+  BirthCity?: string;
+  BirthState?: string;
+  Country?: string;
+  College?: string;
+  HeadshotUrl?: string;
+  CareerEarnings?: number;
+  WorldGolfRanking?: number;
 }
 
 export interface PlayerRound {

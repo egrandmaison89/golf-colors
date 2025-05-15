@@ -8,6 +8,7 @@ interface DraftedPlayersProps {
   getPlayerStatus: (player: Player) => 'active' | 'cut' | 'withdrawn';
   calculatePlayerScore: (player: Player, allPlayers: Player[]) => number;
   renderPlayerScore: (player: Player, score: number, status: 'active' | 'cut' | 'withdrawn') => string;
+  onPlayerClick?: (player: Player) => void;
 }
 
 // Type guard for Player with TotalThrough
@@ -28,7 +29,8 @@ export function DraftedPlayers({
   teamPlayers,
   getPlayerStatus,
   calculatePlayerScore,
-  renderPlayerScore
+  renderPlayerScore,
+  onPlayerClick
 }: DraftedPlayersProps) {
   if (!teamPlayers.length) {
     return (
@@ -136,7 +138,10 @@ export function DraftedPlayers({
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-gray-900" 
+                          style={onPlayerClick ? { cursor: 'pointer', textDecoration: 'underline' } : {}}
+                          onClick={onPlayerClick ? () => onPlayerClick(player) : undefined}
+                        >
                           {player.FirstName} {player.LastName}
                         </div>
                         {player.status === 'withdrawn' && (

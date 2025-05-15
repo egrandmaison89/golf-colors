@@ -19,6 +19,7 @@ import { TeamScores } from '../components/tournament/TeamScores';
 import { TournamentResults } from '../components/tournament/TournamentResults';
 import { TabButton } from '../components/tournament/TabButton';
 import { getPlayerStatus, calculatePlayerScore, renderPlayerScore } from '../utils/tournament';
+import { PlayerCard } from '../components/tournament/PlayerCard';
 
 // Register Chart.js components
 ChartJS.register(
@@ -100,8 +101,24 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   const [isFutureTournament, setIsFutureTournament] = useState(false);
   const [wasUnregistered, setWasUnregistered] = useState(false);
   const [registeredTeams, setRegisteredTeams] = useState<Array<{ team_name: string; team_color: string; }>>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [playerDetailsMap, setPlayerDetailsMap] = useState<Record<number, { PhotoUrl?: string; CareerEarnings?: number; WorldGolfRanking?: number }>>({});
+  const [golfersMap, setGolfersMap] = useState<Record<number, { WorldGolfRank: number }>>({});
 
   const tournamentIdNum = tournamentId ? parseInt(tournamentId) : 0;
+
+  // Handler to open player card
+  const handleShowPlayerCard = (player: Player) => {
+    const details = playerDetailsMap[player.PlayerID] || {};
+    const golferRank = golfersMap[player.PlayerID]?.WorldGolfRank;
+    setSelectedPlayer({
+      ...player,
+      HeadshotUrl: details.PhotoUrl || player.HeadshotUrl,
+      CareerEarnings: details.CareerEarnings,
+      WorldGolfRanking: golferRank
+    });
+  };
+  const handleClosePlayerCard = () => setSelectedPlayer(null);
 
   const renderStandings = () => {
     const isFutureTournament = tournament && new Date(tournament.StartDate) > new Date();
@@ -185,7 +202,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                     } ${isPlayerTaken ? 'bg-gray-100' : ''}`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-gray-900 cursor-pointer hover:underline" onClick={() => handleShowPlayerCard(player)}>
                         {player.FirstName} {player.LastName}
                       </div>
                     </td>
@@ -684,6 +701,42 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     }
   }
 
+  useEffect(() => {
+    async function fetchPlayerDetails() {
+      try {
+        const resp = await fetch(`https://api.sportsdata.io/golf/v2/json/Players?key=${API_KEY}`);
+        if (resp.ok) {
+          const data: Array<{ PlayerID: number; PhotoUrl?: string; CareerEarnings?: number; WorldGolfRanking?: number }> = await resp.json();
+          // Map PlayerID to PhotoUrl, CareerEarnings, WorldGolfRanking if available
+          const map: Record<number, { PhotoUrl?: string; CareerEarnings?: number; WorldGolfRanking?: number }> = {};
+          data.forEach((p) => {
+            map[p.PlayerID] = {
+              PhotoUrl: p.PhotoUrl,
+              CareerEarnings: p.CareerEarnings, // if available
+              WorldGolfRanking: p.WorldGolfRanking // if available
+            };
+          });
+          setPlayerDetailsMap(map);
+        }
+      } catch {
+        // ignore error, fallback to N/A
+      }
+    }
+    fetchPlayerDetails();
+  }, [API_KEY]);
+
+  useEffect(() => {
+    fetch('/golfers.json')
+      .then(res => res.json())
+      .then((golfers: Array<{ PlayerID: number; WorldGolfRank: number }>) => {
+        const map: Record<number, { WorldGolfRank: number }> = {};
+        golfers.forEach((g) => {
+          map[g.PlayerID] = { WorldGolfRank: g.WorldGolfRank };
+        });
+        setGolfersMap(map);
+      });
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -791,10 +844,14 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               getPlayerStatus={getPlayerStatus}
               calculatePlayerScore={calculatePlayerScore}
               renderPlayerScore={renderPlayerScore}
+              onPlayerClick={handleShowPlayerCard}
             />
           )}
           {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
       {activeTab === 'results' && <TournamentResults teamScores={teamScores} players={players} registeredTeams={registeredTeams} />}
+      {selectedPlayer && (
+        <PlayerCard player={selectedPlayer} onClose={handleClosePlayerCard} />
+      )}
     </div>
   );
 }
