@@ -14,6 +14,7 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<{ id: string; team_name: string }[]>([]);
+  const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     async function fetchUsers() {
@@ -48,6 +49,8 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
       setOdds('');
       setOpponentId('');
       onBetProposed();
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setError((err as any).message || 'Failed to propose bet');
@@ -57,63 +60,70 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 mb-8">
-      <h2 className="text-xl font-semibold mb-4">Propose a New Bet</h2>
-      <div className="mb-4">
-        <label className="block text-gray-700 font-medium mb-1">Description</label>
-        <input
-          type="text"
-          className="w-full border rounded px-3 py-2"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          required
-        />
-      </div>
-      <div className="mb-4">
-        <label className="block text-gray-700 font-medium mb-1">Amount ($)</label>
-        <input
-          type="number"
-          className="w-full border rounded px-3 py-2"
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-          required
-          min="1"
-        />
-      </div>
-      <div className="mb-4">
-        <label className="block text-gray-700 font-medium mb-1">Odds</label>
-        <input
-          type="text"
-          className="w-full border rounded px-3 py-2"
-          value={odds}
-          onChange={e => setOdds(e.target.value)}
-          required
-          placeholder="e.g. +100"
-        />
-      </div>
-      <div className="mb-4">
-        <label className="block text-gray-700 font-medium mb-1">Opponent</label>
-        <select
-          className="w-full border rounded px-3 py-2"
-          value={opponentId}
-          onChange={e => setOpponentId(e.target.value)}
-          required
+    <>
+      {showToast && (
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all">
+          Side bet proposed!
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">Propose a New Bet</h2>
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-1">Description</label>
+          <input
+            type="text"
+            className="w-full border rounded px-3 py-2"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-1">Amount ($)</label>
+          <input
+            type="number"
+            className="w-full border rounded px-3 py-2"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            required
+            min="1"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-1">Odds</label>
+          <input
+            type="text"
+            className="w-full border rounded px-3 py-2"
+            value={odds}
+            onChange={e => setOdds(e.target.value)}
+            required
+            placeholder="e.g. +100"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-1">Opponent</label>
+          <select
+            className="w-full border rounded px-3 py-2"
+            value={opponentId}
+            onChange={e => setOpponentId(e.target.value)}
+            required
+          >
+            <option value="">Select a user...</option>
+            <option value="anyone">Anyone</option>
+            {users.map(user => (
+              <option key={user.id} value={user.id}>{user.team_name}</option>
+            ))}
+          </select>
+        </div>
+        {error && <div className="text-red-600 mb-2">{error}</div>}
+        <button
+          type="submit"
+          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 transition-colors"
+          disabled={loading}
         >
-          <option value="">Select a user...</option>
-          <option value="anyone">Anyone</option>
-          {users.map(user => (
-            <option key={user.id} value={user.id}>{user.team_name}</option>
-          ))}
-        </select>
-      </div>
-      {error && <div className="text-red-600 mb-2">{error}</div>}
-      <button
-        type="submit"
-        className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 transition-colors"
-        disabled={loading}
-      >
-        {loading ? 'Proposing...' : 'Propose Bet'}
-      </button>
-    </form>
+          {loading ? 'Proposing...' : 'Propose Bet'}
+        </button>
+      </form>
+    </>
   );
 } 

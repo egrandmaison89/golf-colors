@@ -79,7 +79,7 @@ export function BetItem({ bet, currentUser, onAccept, onDelete, onSettle, onReje
   }
 
   return (
-    <div className="border-b py-4 flex flex-col md:flex-row md:items-center md:justify-between">
+    <div id={`side-bet-${bet.id}`} className="border-b py-4 flex flex-col md:flex-row md:items-center md:justify-between">
       <div>
         <div className="font-semibold text-lg">{bet.description}</div>
         <div className="text-gray-600 text-sm mb-1">Amount: ${bet.amount} | Odds: {bet.odds}</div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Trophy, Users, UserCircle, Settings, X, Menu } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Trophy, Users, UserCircle, Settings, X, Menu, Bell } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import { AccountModal } from './AccountModal';
 import { supabase } from '../lib/supabase';
@@ -11,12 +11,31 @@ interface Profile {
   website_url: string;
 }
 
+type NotificationType = 'incoming' | 'response';
+interface SideBetNotification {
+  id: string;
+  description: string;
+  amount: number;
+  odds: string;
+  proposer: { team_name: string } | null;
+  proposer_id: string;
+  opponent_id: string | null;
+  status: string;
+  created_at: string;
+  type: NotificationType;
+  responseStatus?: string;
+  responderTeamName?: string;
+}
+
 export function Navigation() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<SideBetNotification[]>([]);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Get initial auth state
@@ -41,6 +60,95 @@ export function Navigation() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    async function fetchNotifications() {
+      if (!user?.user) return setNotifications([]);
+      const userId = user.user.id;
+      // Fetch incoming side bets
+      const { data, error } = await supabase
+        .from('side_bets')
+        .select('id, description, amount, odds, proposer:proposer_id(team_name), proposer_id, opponent_id, status, created_at')
+        .or(`opponent_id.eq.${userId},opponent_id.is.null`)
+        .eq('status', 'proposed')
+        .order('created_at', { ascending: false });
+      if (error) return setNotifications([]);
+      const incoming = (data || []).filter((bet: any) => bet.opponent_id === userId || (bet.opponent_id === null && bet.proposer_id !== userId)).map((bet: any) => ({ ...bet, type: 'incoming' as NotificationType }));
+      // Fetch responses to user's proposals
+      const { data: responses } = await supabase
+        .from('side_bets')
+        .select('id, description, amount, odds, proposer:proposer_id(team_name), proposer_id, opponent:opponent_id(team_name), opponent_id, status, created_at')
+        .eq('proposer_id', userId)
+        .not('status', 'eq', 'proposed')
+        .order('created_at', { ascending: false });
+      const responseNotifications = (responses || []).map((bet: any) => ({
+        ...bet,
+        type: 'response' as NotificationType,
+        responseStatus: bet.status,
+        responderTeamName: bet.opponent?.team_name || 'Opponent',
+      }));
+      setNotifications([...incoming, ...responseNotifications].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    }
+    if (showNotifications) fetchNotifications();
+  }, [showNotifications, user]);
+
+  // Real-time subscription for side bet notifications
+  useEffect(() => {
+    if (!user?.user) return;
+    const userId = user.user.id;
+    // Incoming bets
+    const channel = supabase
+      .channel('side-bet-notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'side_bets',
+      }, (payload) => {
+        const bet = payload.new;
+        if (
+          bet.status === 'proposed' &&
+          (bet.opponent_id === userId || (bet.opponent_id === null && bet.proposer_id !== userId))
+        ) {
+          setNotifications((prev) => [
+            {
+              ...bet,
+              proposer: bet.proposer, // may need to refetch for team_name
+              type: 'incoming',
+            },
+            ...prev,
+          ]);
+        }
+      })
+      // Responses to user's proposals
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'side_bets',
+      }, (payload) => {
+        const bet = payload.new;
+        const old = payload.old;
+        if (
+          bet.proposer_id === userId &&
+          old.status === 'proposed' &&
+          bet.status !== 'proposed'
+        ) {
+          setNotifications((prev) => [
+            {
+              ...bet,
+              proposer: bet.proposer,
+              type: 'response',
+              responseStatus: bet.status,
+              responderTeamName: bet.opponent?.team_name || 'Opponent',
+            },
+            ...prev,
+          ]);
+        }
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   async function fetchProfile(userId: string) {
     const { data, error } = await supabase
@@ -82,6 +190,19 @@ export function Navigation() {
               <NavLinks user={user} />
               {user?.user ? (
                 <div className="flex items-center space-x-4">
+                  {/* Notification Bell */}
+                  <button
+                    onClick={() => setShowNotifications(true)}
+                    className="relative flex items-center justify-center p-2 rounded-full hover:bg-gray-100 focus:outline-none"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="h-6 w-6 text-gray-600" />
+                    {notifications.length > 0 && (
+                      <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full transform translate-x-1/2 -translate-y-1/2">
+                        {notifications.length}
+                      </span>
+                    )}
+                  </button>
                   <button
                     onClick={() => setShowAccountModal(true)}
                     className="flex items-center space-x-2 text-gray-600 hover:text-gray-900"
@@ -128,6 +249,16 @@ export function Navigation() {
                 <div className="pt-4 border-t border-gray-100">
                   {user?.user ? (
                     <div className="space-y-4">
+                      {/* Notification Bell in mobile menu */}
+                      <button
+                        onClick={() => { setShowNotifications(true); setIsMobileMenuOpen(false); }}
+                        className="relative flex items-center space-x-2 text-gray-600 hover:text-gray-900 w-full"
+                        aria-label="Notifications"
+                      >
+                        <Bell className="h-5 w-5" />
+                        <span>Notifications</span>
+                        {/* TODO: Add badge for unread notifications */}
+                      </button>
                       <button
                         onClick={() => {
                           setShowAccountModal(true);
@@ -167,6 +298,52 @@ export function Navigation() {
           )}
         </div>
       </nav>
+      
+      {/* Notifications Modal placeholder */}
+      {showNotifications && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Notifications</h2>
+              <button onClick={() => setShowNotifications(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {notifications.length === 0 ? (
+              <div className="text-gray-500">No notifications yet.</div>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {notifications.map((notif) => (
+                  <li key={notif.id + notif.type + (notif.responseStatus || '')} className="py-3 cursor-pointer hover:bg-gray-50 rounded transition-colors" onClick={() => {
+                    setShowNotifications(false);
+                    if (notif.type === 'incoming') {
+                      navigate(`/side-bets?betId=${notif.id}`);
+                      setTimeout(() => {
+                        const el = document.getElementById(`side-bet-${notif.id}`);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }, 500);
+                    }
+                  }}>
+                    {notif.type === 'incoming' ? (
+                      <>
+                        <div className="font-semibold text-gray-900">New Side Bet proposed by {notif.proposer?.team_name || 'Unknown'}</div>
+                        <div className="text-gray-700 text-sm">{notif.description} (${notif.amount}, Odds: {notif.odds})</div>
+                        <div className="text-xs text-gray-400">Proposed {new Date(notif.created_at).toLocaleString()}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="font-semibold text-gray-900">Your Side Bet was {notif.responseStatus} by {notif.responderTeamName}</div>
+                        <div className="text-gray-700 text-sm">{notif.description} (${notif.amount}, Odds: {notif.odds})</div>
+                        <div className="text-xs text-gray-400">Updated {new Date(notif.created_at).toLocaleString()}</div>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
       
       <AuthModal
         isOpen={showAuthModal}
