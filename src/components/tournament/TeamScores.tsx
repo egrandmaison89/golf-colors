@@ -17,9 +17,10 @@ export function TeamScores({ teamScores, registeredTeams }: TeamScoresProps) {
     };
   });
 
+  const sortedTeams = [...allTeams].sort((a, b) => a.total_score - b.total_score);
   return (
     <div className="space-y-6">
-      {allTeams.map((team, index) => (
+      {sortedTeams.map((team, index) => (
         <div key={team.team_name} className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
