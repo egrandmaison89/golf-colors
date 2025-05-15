@@ -304,17 +304,17 @@ export function Home() {
       {/* Winner Callout */}
       {!loading && recentWinners && (
         <section className="bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl shadow-lg p-8 max-w-4xl mx-auto border border-green-100 mb-8">
-          <div className="flex items-center space-x-4">
-            <Trophy className="h-12 w-12 text-yellow-500" />
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">
+            <div className="flex items-center space-x-4">
+              <Trophy className="h-12 w-12 text-yellow-500" />
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">
                 Congratulations to {recentWinners.team_names.join(' & ')}!
-              </h2>
-              <p className="text-gray-600">
+                </h2>
+                <p className="text-gray-600">
                 Winner{recentWinners.team_names.length > 1 ? 's' : ''} of the {recentWinners.tournament_name}.
-              </p>
+                </p>
+              </div>
             </div>
-          </div>
         </section>
       )}
 

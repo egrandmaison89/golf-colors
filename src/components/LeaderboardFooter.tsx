@@ -54,7 +54,7 @@ export function LeaderboardFooter() {
           };
         })
       );
-      setLeaderboard(leaderboardData.sort((a, b) => (b.totalEarnings + b.totalBounties) - (a.totalEarnings + a.totalBounties)));
+      setLeaderboard(leaderboardData.sort((a, b) => a.combinedScore - b.combinedScore));
       setLoading(false);
     }
     fetchLeaderboard();

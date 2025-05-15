@@ -26,6 +26,7 @@ export interface PlayerRound {
   Score: number;
   TeeTime: string | null;
   IsWithdrawn: boolean;
+  Thru?: number;
 }
 
 export interface TeamPlayer {
@@ -46,3 +47,4 @@ export interface TeamScore {
     firstName: string;
     lastName: string;
   }[];
+}

@@ -9,6 +9,7 @@ import { MyResults } from './pages/MyResults';
 import { Leagues } from './pages/Leagues';
 import { LeagueDetail } from './pages/LeagueDetail';
 import { Rules } from './pages/Rules';
+import SideBets from './pages/SideBets';
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { LeagueProvider } from './contexts/LeagueContext';
@@ -82,6 +83,7 @@ function App() {
               }
             />
             <Route path="/rules" element={<Rules />} />
+            <Route path="/side-bets" element={<SideBets />} />
             <Route path="/tournament/:tournamentId" element={<TournamentDetail tournamentId={undefined} />} />
             <Route path="*" element={<Navigate to="/tournaments" replace />} />
           </Routes>

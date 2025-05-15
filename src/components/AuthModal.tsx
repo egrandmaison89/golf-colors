@@ -162,59 +162,59 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </form>
           ) : (
             <>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
-                </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              />
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              />
+            </div>
 
-                {isSignUp && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Team Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={teamName}
-                      onChange={(e) => setTeamName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                )}
+            {isSignUp && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Team Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+            )}
 
-                {error && (
-                  <p className="text-red-600 text-sm">{error}</p>
-                )}
+            {error && (
+              <p className="text-red-600 text-sm">{error}</p>
+            )}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
-                </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+            </button>
 
                 <button
                   type="button"
@@ -223,27 +223,27 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 >
                   Test Email Settings
                 </button>
-              </form>
+          </form>
 
-              {emailSent && isSignUp && (
-                <div className="mt-4 p-4 bg-blue-50 text-blue-700 rounded-lg">
+          {emailSent && isSignUp && (
+            <div className="mt-4 p-4 bg-blue-50 text-blue-700 rounded-lg">
                   <p className="text-sm font-medium mb-1">
                     Welcome to the Colors Cup!
                   </p>
-                  <p className="text-sm">
+              <p className="text-sm">
                     We've sent a confirmation email to {email}. Please check your inbox (and spam folder) to verify your account.
-                  </p>
-                </div>
-              )}
+              </p>
+            </div>
+          )}
 
-              <div className="mt-4 text-center">
-                <button
-                  onClick={() => setIsSignUp(!isSignUp)}
-                  className="text-green-600 hover:text-green-700 text-sm"
-                >
-                  {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
-                </button>
-              </div>
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-green-600 hover:text-green-700 text-sm"
+            >
+              {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
+            </button>
+          </div>
 
               <button
                 type="button"

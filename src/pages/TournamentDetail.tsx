@@ -307,28 +307,28 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   }
 
   // Move fetchEntries out of useEffect so it can be called elsewhere
-  async function fetchEntries() {
-    const { data: entriesData } = await supabase
-      .from('tournament_entries')
-      .select('id, user_id, status, team_players(player_id), profiles!inner(team_name, team_color)')
-      .eq('tournament_id', tournamentId)
-      .eq('status', 'registered')
-      .order('created_at', { ascending: true });
+    async function fetchEntries() {
+      const { data: entriesData } = await supabase
+        .from('tournament_entries')
+        .select('id, user_id, status, team_players(player_id), profiles!inner(team_name, team_color)')
+        .eq('tournament_id', tournamentId)
+        .eq('status', 'registered')
+        .order('created_at', { ascending: true });
 
-    if (entriesData) {
+      if (entriesData) {
       setEntries({ [tournamentIdNum]: entriesData });
       if (user?.id) {
         const userEntry = entriesData.find((e: Entry) => e.user_id === user.id);
-        setIsRegistered(!!userEntry);
-      }
-      // Extract registered teams
+          setIsRegistered(!!userEntry);
+        }
+        // Extract registered teams
       const teams = entriesData.map((entry: Entry) => ({
         team_name: (Array.isArray(entry.profiles) ? entry.profiles[0]?.team_name : entry.profiles.team_name) || 'Unknown Team',
         team_color: (Array.isArray(entry.profiles) ? entry.profiles[0]?.team_color : entry.profiles.team_color) || 'Blue',
-      }));
-      setRegisteredTeams(teams);
+        }));
+        setRegisteredTeams(teams);
+      }
     }
-  }
 
   useEffect(() => {
     fetchEntries();
@@ -614,33 +614,33 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4 flex-1">
-          <Link
-            to="/tournaments"
-            className="flex items-center text-green-600 hover:text-green-700 transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back
-          </Link>
+            <div className="flex items-center space-x-4 flex-1">
+              <Link
+                to="/tournaments"
+                className="flex items-center text-green-600 hover:text-green-700 transition-colors"
+              >
+                <ArrowLeft className="h-5 w-5 mr-2" />
+                Back
+              </Link>
           {showTeamSelectionMessage && user?.id && isRegistered && (
-            <div className={`px-4 py-2 rounded-lg ${
-              selectedPlayers.length === 3
-                ? 'bg-green-100 text-green-700'
-                : 'bg-blue-100 text-blue-700'
-            }`}>
-              {teamSelectionMessage}
+                <div className={`px-4 py-2 rounded-lg ${
+                  selectedPlayers.length === 3
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {teamSelectionMessage}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4">
           {isFutureTournament && user?.id && !isRegistered && (
-            <button
-              onClick={handleRegister}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Register for Tournament
-            </button>
-          )}
+                <button
+                  onClick={handleRegister}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Register for Tournament
+                </button>
+              )}
           {isFutureTournament && user?.id && isRegistered && (
             <button
               onClick={handleUnregister}
@@ -649,62 +649,62 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               Unregister
             </button>
           )}
-          <Trophy className="h-6 w-6 text-green-600" />
+              <Trophy className="h-6 w-6 text-green-600" />
           <span className="text-lg font-semibold text-gray-900">{tournament?.Name || 'Loading...'}</span>
-        </div>
+            </div>
       </div>
 
-      {wasUnregistered && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-700">
-            You were unregistered from this tournament. Please contact support if you believe this was in error.
-          </p>
-        </div>
-      )}
+          {wasUnregistered && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700">
+                You were unregistered from this tournament. Please contact support if you believe this was in error.
+              </p>
+            </div>
+          )}
 
-      <div className="overflow-x-auto pb-2 mb-6 -mx-4 px-4">
-        <div className="flex flex-wrap gap-2 min-w-max">
-          <TabButton
-            active={activeTab === 'standings'} 
-            onClick={() => setActiveTab('standings')} 
-            icon={isFutureTournament ? <PenTool /> : <Trophy />}
-            text={isFutureTournament ? 'Draft' : 'Leaderboard'}
-            fullText={isFutureTournament ? 'Draft Central' : 'Tournament Leaderboard'}
-          />
-          <TabButton
-            active={activeTab === 'players'}
-            onClick={() => setActiveTab('players')}
-            icon={<Users className="h-5 w-5 text-blue-500" />}
-            text="Players"
-            fullText="Drafted Players"
-          />
-          <TabButton
-            active={activeTab === 'teams'}
-            onClick={() => setActiveTab('teams')}
-            icon={<Users />}
-            text="Teams"
-            fullText="Team Leaderboard"
-          />
-          <TabButton
-            active={activeTab === 'results'}
-            onClick={() => setActiveTab('results')}
-            icon={<Trophy />}
-            text="Results"
-            fullText="Results"
-          />
-        </div>
-      </div>
-      {activeTab === 'standings' && renderStandings()}
-      {activeTab === 'players' && (
-        <DraftedPlayers
-          players={players}
-          teamPlayers={teamPlayers}
-          getPlayerStatus={getPlayerStatus}
-          calculatePlayerScore={calculatePlayerScore}
-          renderPlayerScore={renderPlayerScore}
-        />
-      )}
-      {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
+          <div className="overflow-x-auto pb-2 mb-6 -mx-4 px-4">
+            <div className="flex flex-wrap gap-2 min-w-max">
+              <TabButton
+                active={activeTab === 'standings'} 
+                onClick={() => setActiveTab('standings')} 
+                icon={isFutureTournament ? <PenTool /> : <Trophy />}
+                text={isFutureTournament ? 'Draft' : 'Leaderboard'}
+                fullText={isFutureTournament ? 'Draft Central' : 'Tournament Leaderboard'}
+              />
+              <TabButton
+                active={activeTab === 'players'}
+                onClick={() => setActiveTab('players')}
+                icon={<Users className="h-5 w-5 text-blue-500" />}
+                text="Players"
+                fullText="Drafted Players"
+              />
+              <TabButton
+                active={activeTab === 'teams'}
+                onClick={() => setActiveTab('teams')}
+                icon={<Users />}
+                text="Teams"
+                fullText="Team Leaderboard"
+              />
+              <TabButton
+                active={activeTab === 'results'}
+                onClick={() => setActiveTab('results')}
+                icon={<Trophy />}
+                text="Results"
+                fullText="Results"
+              />
+            </div>
+          </div>
+          {activeTab === 'standings' && renderStandings()}
+          {activeTab === 'players' && (
+            <DraftedPlayers
+              players={players}
+              teamPlayers={teamPlayers}
+              getPlayerStatus={getPlayerStatus}
+              calculatePlayerScore={calculatePlayerScore}
+              renderPlayerScore={renderPlayerScore}
+            />
+          )}
+          {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
       {activeTab === 'results' && <TournamentResults teamScores={teamScores} players={players} registeredTeams={registeredTeams} />}
     </div>
   );

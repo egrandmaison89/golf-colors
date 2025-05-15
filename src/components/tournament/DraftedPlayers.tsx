@@ -72,64 +72,85 @@ export function DraftedPlayers({
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Team
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                THRU
+              </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Score
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {sortedPlayers.map((player, index) => (
-              <tr 
-                key={player.PlayerID}
-                className={`${
-                  player.status === 'withdrawn' ? 'bg-red-50' : 
-                  player.status === 'cut' ? 'bg-orange-50' : 
-                  'hover:bg-gray-50'
-                }`}
-              >
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {index + 1}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {player.FirstName} {player.LastName}
+            {sortedPlayers.map((player, index) => {
+              // Find today's round
+              const today = new Date().toISOString().slice(0, 10);
+              const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+              let progress = '';
+              if (roundToday) {
+                if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
+                  progress = `Thru ${roundToday.Thru}`;
+                } else if (roundToday.Thru === 18) {
+                  progress = 'F';
+                } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                  progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+              }
+              return (
+                <tr 
+                  key={player.PlayerID}
+                  className={`${
+                    player.status === 'withdrawn' ? 'bg-red-50' : 
+                    player.status === 'cut' ? 'bg-orange-50' : 
+                    'hover:bg-gray-50'
+                  }`}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {index + 1}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {player.FirstName} {player.LastName}
+                        </div>
+                        {player.status === 'withdrawn' && (
+                          <div className="text-sm text-red-600 flex items-center mt-1">
+                            <UserX className="h-4 w-4 mr-1" />
+                            Withdrawn
+                          </div>
+                        )}
+                        {player.status === 'cut' && (
+                          <div className="text-sm text-orange-600 mt-1">
+                            Cut
+                          </div>
+                        )}
                       </div>
-                      {player.status === 'withdrawn' && (
-                        <div className="text-sm text-red-600 flex items-center mt-1">
-                          <UserX className="h-4 w-4 mr-1" />
-                          Withdrawn
-                        </div>
-                      )}
-                      {player.status === 'cut' && (
-                        <div className="text-sm text-orange-600 mt-1">
-                          Cut
-                        </div>
-                      )}
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center space-x-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: player.teamColor?.toLowerCase() || 'blue' }}
-                    />
-                    <span className="text-sm text-gray-900">{player.teamName}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className={`text-sm font-medium ${
-                    player.status === 'withdrawn' ? 'text-red-600' :
-                    player.status === 'cut' ? 'text-orange-600' :
-                    player.score <= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {renderPlayerScore(player, player.score, player.status)}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center space-x-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: player.teamColor?.toLowerCase() || 'blue' }}
+                      />
+                      <span className="text-sm text-gray-900">{player.teamName}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-700">{progress}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <span className={`text-sm font-medium ${
+                      player.status === 'withdrawn' ? 'text-red-600' :
+                      player.status === 'cut' ? 'text-orange-600' :
+                      player.score <= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {renderPlayerScore(player, player.score, player.status)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

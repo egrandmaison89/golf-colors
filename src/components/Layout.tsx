@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Navigation } from './Navigation';
-import { Trophy, Users, Book } from 'lucide-react';
+import { Trophy, Users, Book, HandCoins } from 'lucide-react';
 import { LeaderboardFooter } from './LeaderboardFooter';
 
 interface LayoutProps {
@@ -60,6 +60,13 @@ export function Layout({ children }: LayoutProps) {
                     <span>League Overview</span>
                   </Link>
                 )}
+                <Link 
+                  to="/side-bets" 
+                  className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                >
+                  <HandCoins className="h-5 w-5" />
+                  <span>Side Bets</span>
+                </Link>
                 <Link 
                   to="/rules" 
                   className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
