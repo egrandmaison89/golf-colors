@@ -103,6 +103,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   const [registeredTeams, setRegisteredTeams] = useState<Array<{ team_name: string; team_color: string; }>>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [golfersMap, setGolfersMap] = useState<Record<number, { WorldGolfRank: number }>>({});
+  const [thruMap, setThruMap] = useState<Map<number, { holesCompleted: number, teeTime?: string }>>(new Map());
 
   const tournamentIdNum = tournamentId ? parseInt(tournamentId) : 0;
 
@@ -154,35 +155,19 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                   tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
                 );
                 
-                // THRU/progress logic (same as DraftedPlayers)
+                // THRU/progress logic (robust for any round)
                 let progress = '';
-                const today = new Date().toISOString().slice(0, 10);
-                if ('TotalThrough' in player && typeof player.TotalThrough === 'number') {
-                  const thru = player.TotalThrough;
-                  if (thru === 0 || thru === null) {
-                    const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-                    if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    }
-                  } else if (thru >= 18) {
-                    progress = 'F';
-                  } else {
-                    progress = `${thru}`;
-                  }
+                const thruData = thruMap.get(player.PlayerID);
+                const holesCompleted = thruData?.holesCompleted;
+                const teeTime = thruData?.teeTime;
+                if (typeof holesCompleted === 'number' && holesCompleted > 0 && holesCompleted < 18) {
+                  progress = `${holesCompleted}`;
+                } else if (holesCompleted === 18) {
+                  progress = 'F';
+                } else if (teeTime && new Date(teeTime) > new Date()) {
+                  progress = new Date(teeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 } else {
-                  let roundToday = undefined;
-                  if (Array.isArray(player.PlayerRoundScore)) {
-                    roundToday = player.PlayerRoundScore.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-                  }
-                  if (roundToday) {
-                    if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
-                      progress = `${roundToday.Thru}`;
-                    } else if (roundToday.Thru === 18) {
-                      progress = 'F';
-                    } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    }
-                  }
+                  progress = '';
                 }
                 
                 return [
@@ -257,7 +242,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                       <td colSpan={isFutureTournament && isRegistered ? 5 : 4} className="p-0">
                         <PlayerCard player={{ ...player, WorldGolfRanking: golfersMap[player.PlayerID]?.WorldGolfRank ?? player.WorldGolfRanking }} onClose={handleClosePlayerCard} />
                       </td>
-                    </tr>
+                  </tr>
                   )
                 ];
               })}
@@ -430,6 +415,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
         }
 
         let sortedPlayers: Player[];
+        const newThruMap = new Map<number, { holesCompleted: number, teeTime?: string }>();
         if (tournamentId === '999999') {
           sortedPlayers = MOCK_PLAYERS;
         } else {
@@ -475,14 +461,13 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
 
             // Fetch leaderboard for per-hole data
             const leaderboardResponse = await fetch(
-              `https://api.sportsdata.io/golf/v2/json/Leaderboard/${tournamentId}?key=${API_KEY}`
+              `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournamentId}?key=${API_KEY}`
             );
             let leaderboardData: unknown = null;
             if (leaderboardResponse.ok) {
               leaderboardData = await leaderboardResponse.json();
             }
-            // Build a map of PlayerID to THRU (holes completed)
-            const thruMap = new Map<number, number>();
+            // Build a map of PlayerID to THRU (holes completed) and TeeTime using robust round selection
             if (
               leaderboardData &&
               typeof leaderboardData === 'object' &&
@@ -490,32 +475,39 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               'Players' in leaderboardData &&
               Array.isArray((leaderboardData as { Players: unknown[] }).Players)
             ) {
-              ((leaderboardData as { Players: unknown[] }).Players).forEach((player) => {
-                if (
-                  player &&
-                  typeof player === 'object' &&
-                  'PlayerID' in player &&
-                  'Rounds' in player &&
-                  Array.isArray((player as { Rounds: unknown[] }).Rounds)
-                ) {
-                  let maxThru = 0;
-                  ((player as { Rounds: unknown[] }).Rounds).forEach((round) => {
-                    if (
-                      round &&
-                      typeof round === 'object' &&
-                      'Holes' in round &&
-                      Array.isArray((round as { Holes: unknown[] }).Holes)
-                    ) {
-                      const holesCompleted = ((round as { Holes: unknown[] }).Holes).filter((h) =>
-                        h && typeof h === 'object' && 'Score' in h && (h as { Score: unknown }).Score !== null
-                      ).length;
-                      if (holesCompleted > maxThru) {
-                        maxThru = holesCompleted;
-                      }
-                    }
-                  });
-                  thruMap.set((player as { PlayerID: number }).PlayerID, maxThru);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ((leaderboardData as { Players: any[] }).Players).forEach((player: any) => {
+                const now = new Date();
+                let currentRound = null;
+                if (Array.isArray(player.Rounds)) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  currentRound = player.Rounds.find((r: any) => r.Day && r.Day.slice(0, 10) === now.toISOString().slice(0, 10));
+                  if (!currentRound) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    currentRound = [...player.Rounds].reverse().find((r: any) => Array.isArray(r.Holes) && r.Holes.some((h: any) => h.Score !== null));
+                  }
                 }
+                let holesCompleted = 0;
+                let teeTime: string | undefined = undefined;
+                if (currentRound && Array.isArray(currentRound.Holes)) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  holesCompleted = currentRound.Holes.filter((h: any) => h.Score !== null).length;
+                  teeTime = currentRound.TeeTime;
+                } else if (Array.isArray(player.Rounds)) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const nextRound = player.Rounds.find((r: any) => r.TeeTime && new Date(r.TeeTime) > now);
+                  if (nextRound) teeTime = nextRound.TeeTime;
+                }
+                // Debug output
+                console.debug('LEADERBOARD THRU DEBUG', {
+                  playerId: player.PlayerID,
+                  playerName: player.Name,
+                  currentRound,
+                  holesCompleted,
+                  teeTime,
+                  allRounds: player.Rounds,
+                });
+                newThruMap.set(player.PlayerID, { holesCompleted, teeTime });
               });
             }
             // Merge THRU into player objects
@@ -526,12 +518,13 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               return a.TotalScore - b.TotalScore;
             }).map((player: Player) => ({
               ...player,
-              TotalThrough: thruMap.get(player.PlayerID) ?? null
+              TotalThrough: newThruMap.get(player.PlayerID) ?? null
             }));
             console.log('Final sortedPlayers with deduced THRU:', sortedPlayers);
           }
         }
         setPlayers(sortedPlayers);
+        setThruMap(newThruMap);
 
         const { data: teamPlayersData } = await supabase
           .from('team_players')
@@ -763,8 +756,8 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
             >
               Unregister
-            </button>
-          )}
+                </button>
+              )}
               <Trophy className="h-6 w-6 text-green-600" />
           <span className="text-lg font-semibold text-gray-900">{tournament?.Name || 'Loading...'}</span>
             </div>
@@ -821,6 +814,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               selectedPlayerId={selectedPlayerId}
               setSelectedPlayerId={setSelectedPlayerId}
               golfersMap={golfersMap}
+              thruMap={thruMap}
             />
           )}
           {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}

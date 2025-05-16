@@ -37,6 +37,7 @@ export interface PlayerRound {
   TeeTime: string | null;
   IsWithdrawn: boolean;
   Thru?: number;
+  Holes?: Array<{ Score: number | null }>;
 }
 
 export interface TeamPlayer {

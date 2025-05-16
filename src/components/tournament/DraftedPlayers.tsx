@@ -12,6 +12,7 @@ interface DraftedPlayersProps {
   selectedPlayerId: number | null;
   setSelectedPlayerId: (id: number | null) => void;
   golfersMap: Record<number, { WorldGolfRank: number }>;
+  thruMap?: Map<number, { holesCompleted: number, teeTime?: string }>;
 }
 
 // Type guard for Player with TotalThrough
@@ -35,7 +36,8 @@ export function DraftedPlayers({
   renderPlayerScore,
   selectedPlayerId,
   setSelectedPlayerId,
-  golfersMap
+  golfersMap,
+  thruMap
 }: DraftedPlayersProps) {
   if (!teamPlayers.length) {
     return (
@@ -103,28 +105,44 @@ export function DraftedPlayers({
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedPlayers.map((player, index) => {
               let progress = '';
-              const today = new Date().toISOString().slice(0, 10);
-              if (hasTotalThrough(player)) {
-                const thru = player.TotalThrough;
-                if (thru === 0 || thru === null) {
-                  const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-                  if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                    progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  }
-                } else if (thru >= 18) {
+              if (thruMap) {
+                const thruData = thruMap.get(player.PlayerID);
+                const holesCompleted = thruData?.holesCompleted;
+                const teeTime = thruData?.teeTime;
+                if (typeof holesCompleted === 'number' && holesCompleted > 0 && holesCompleted < 18) {
+                  progress = `${holesCompleted}`;
+                } else if (holesCompleted === 18) {
                   progress = 'F';
+                } else if (teeTime && new Date(teeTime) > new Date()) {
+                  progress = new Date(teeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 } else {
-                  progress = `${thru}`;
+                  progress = '';
                 }
               } else {
-                const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-                if (roundToday) {
-                  if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
-                    progress = `${roundToday.Thru}`;
-                  } else if (roundToday.Thru === 18) {
+                // fallback to old logic if thruMap is not provided
+                const today = new Date().toISOString().slice(0, 10);
+                if (hasTotalThrough(player)) {
+                  const thru = player.TotalThrough;
+                  if (thru === 0 || thru === null) {
+                    const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                    if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                  } else if (thru >= 18) {
                     progress = 'F';
-                  } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                    progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  } else {
+                    progress = `${thru}`;
+                  }
+                } else {
+                  const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                  if (roundToday) {
+                    if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
+                      progress = `${roundToday.Thru}`;
+                    } else if (roundToday.Thru === 18) {
+                      progress = 'F';
+                    } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
                   }
                 }
               }

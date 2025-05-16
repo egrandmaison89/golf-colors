@@ -14,7 +14,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 via-green-100 to-yellow-100">
       <div className="w-full bg-white/90 shadow-md border-b border-blue-200/40">
-        <Navigation />
+      <Navigation />
       </div>
       <main className="max-w-6xl mx-auto px-4 py-4 rounded-2xl shadow-xl border border-blue-200/30 bg-white/90 backdrop-blur-md mt-4">
         {children}
