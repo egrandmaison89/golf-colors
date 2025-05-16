@@ -13,6 +13,7 @@ interface DraftedPlayersProps {
   setSelectedPlayerId: (id: number | null) => void;
   golfersMap: Record<number, { WorldGolfRank: number }>;
   thruMap?: Map<number, { holesCompleted: number, teeTime?: string }>;
+  playerPositions: Record<number, string>;
 }
 
 // Type guard for Player with TotalThrough
@@ -37,7 +38,8 @@ export function DraftedPlayers({
   selectedPlayerId,
   setSelectedPlayerId,
   golfersMap,
-  thruMap
+  thruMap,
+  playerPositions
 }: DraftedPlayersProps) {
   if (!teamPlayers.length) {
     return (
@@ -85,9 +87,8 @@ export function DraftedPlayers({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Position
-              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">POS</th>
+
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Player
               </th>
@@ -103,8 +104,9 @@ export function DraftedPlayers({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {sortedPlayers.map((player, index) => {
+            {sortedPlayers.map((player) => {
               let progress = '';
+              const pos = playerPositions[player.PlayerID];
               if (thruMap) {
                 const thruData = thruMap.get(player.PlayerID);
                 const holesCompleted = thruData?.holesCompleted;
@@ -155,9 +157,7 @@ export function DraftedPlayers({
                   'hover:bg-gray-50'
                 }`}
               >
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {index + 1}
-                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pos}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
                     <div>

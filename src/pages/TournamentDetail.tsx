@@ -80,6 +80,31 @@ interface SupabaseUser {
   id: string;
 }
 
+// Utility to calculate player positions with tie logic
+function getPlayerPositions(players: Player[]): Record<number, string> {
+  // Sort by TotalScore (lowest first), then by PlayerID for stability
+  const sorted = [...players].sort((a, b) => {
+    if (a.TotalScore === b.TotalScore) return a.PlayerID - b.PlayerID;
+    if (a.TotalScore === null) return 1;
+    if (b.TotalScore === null) return -1;
+    return a.TotalScore - b.TotalScore;
+  });
+  const positions: Record<number, string> = {};
+  let lastScore = null;
+  let lastPos = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const player = sorted[i];
+    if (player.TotalScore === lastScore) {
+      positions[player.PlayerID] = `T${lastPos}`;
+    } else {
+      lastPos = i + 1;
+      positions[player.PlayerID] = `${lastPos}`;
+    }
+    lastScore = player.TotalScore;
+  }
+  return positions;
+}
+
 export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps) {
   const { tournamentId: paramId } = useParams<{ tournamentId: string }>();
   const tournamentId = propId || paramId;
@@ -121,12 +146,15 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     const userEntryId = typeof userEntry === 'object' && userEntry !== null && 'id' in userEntry ? userEntry.id : undefined;
     const userTeamPlayers = teamPlayers.filter(tp => tp.entry_id === userEntryId);
 
+    const playerPositions = getPlayerPositions(players);
+
     return (
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">POS</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Player
                 </th>
@@ -177,6 +205,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                       isPlayerSelected ? 'bg-green-50' : ''
                     } ${isPlayerTaken ? 'bg-gray-100' : ''}`}
                   >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{playerPositions[player.PlayerID]}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 cursor-pointer hover:underline" onClick={() => handleShowPlayerCard(player)}>
                         {player.FirstName} {player.LastName}
@@ -239,7 +268,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                   </tr>,
                   selectedPlayerId === player.PlayerID && (
                     <tr key={`player-card-${player.PlayerID}`}> 
-                      <td colSpan={isFutureTournament && isRegistered ? 5 : 4} className="p-0">
+                      <td colSpan={isFutureTournament && isRegistered ? 6 : 5} className="p-0">
                         <PlayerCard player={{ ...player, WorldGolfRanking: golfersMap[player.PlayerID]?.WorldGolfRank ?? player.WorldGolfRanking }} onClose={handleClosePlayerCard} />
                       </td>
                   </tr>
@@ -815,6 +844,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               setSelectedPlayerId={setSelectedPlayerId}
               golfersMap={golfersMap}
               thruMap={thruMap}
+              playerPositions={getPlayerPositions(players)}
             />
           )}
           {activeTab === 'teams' && <TeamScores teamScores={teamScores} registeredTeams={registeredTeams} />}
