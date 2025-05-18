@@ -7,7 +7,7 @@ interface DraftedPlayersProps {
   players: Player[];
   teamPlayers: TeamPlayer[];
   getPlayerStatus: (player: Player) => 'active' | 'cut' | 'withdrawn';
-  calculatePlayerScore: (player: Player, allPlayers: Player[]) => number;
+  calculatePlayerScore: (player: Player, allPlayers: Player[], isDraftedTab: boolean) => number;
   renderPlayerScore: (player: Player, score: number, status: 'active' | 'cut' | 'withdrawn') => string;
   selectedPlayerId: number | null;
   setSelectedPlayerId: (id: number | null) => void;
@@ -57,7 +57,7 @@ export function DraftedPlayers({
     if (!player) return acc;
 
     const status = getPlayerStatus(player);
-    const score = calculatePlayerScore(player, players);
+    const score = calculatePlayerScore(player, players, true);
 
     const teamName = tp.profile?.team_name || 'Unknown Team';
     const teamColor = getTeamColor(tp.profile);

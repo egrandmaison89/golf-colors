@@ -177,7 +177,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             <tbody className="bg-white divide-y divide-gray-200">
               {players.map((player) => {
                 const status = getPlayerStatus(player);
-                const score = calculatePlayerScore(player, players);
+                const score = calculatePlayerScore(player, players, false);
                 const isPlayerSelected = selectedPlayers.includes(player.PlayerID);
                 const isPlayerTaken = teamPlayers.some(tp => 
                   tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
@@ -218,7 +218,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                             ? `+${playerOdds.find(p => p.PlayerID === player.PlayerID)?.OddsToWin}`
                             : 'N/A'
                         ) : (
-                          renderPlayerScore(player, score, status)
+                          renderPlayerScore(player, score, status, false)
                         )}
                       </div>
                     </td>
@@ -292,7 +292,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
 
       const teamName = tp.profile.team_name;
       const status = getPlayerStatus(player);
-      const playerScore = calculatePlayerScore(player, players);
+      const playerScore = calculatePlayerScore(player, players, false);
 
       if (!teamScoresMap.has(teamName)) {
         teamScoresMap.set(teamName, {
@@ -481,13 +481,15 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               }
             }
           } else {
-            // Fetch main player data
-            const response = await fetch(
-              `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`
+            // Fetch final leaderboard data for cut logic
+            const leaderboardFinalResponse = await fetch(
+              `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournamentId}?key=${API_KEY}`
             );
-            if (!response.ok) throw new Error('Failed to fetch tournament details');
-            const data = await response.json();
-
+            if (!leaderboardFinalResponse.ok) throw new Error('Failed to fetch final leaderboard');
+            const leaderboardFinalData = await leaderboardFinalResponse.json();
+            if (!leaderboardFinalData.Players) throw new Error('No player data in final leaderboard');
+            sortedPlayers = leaderboardFinalData.Players;
+            // Optionally, fetch per-hole data for THRU/tee time if needed
             // Fetch leaderboard for per-hole data
             const leaderboardResponse = await fetch(
               `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournamentId}?key=${API_KEY}`
@@ -539,19 +541,24 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                 newThruMap.set(player.PlayerID, { holesCompleted, teeTime });
               });
             }
-            // Merge THRU into player objects
-            sortedPlayers = data.sort((a: Player, b: Player) => {
+            // Optionally, sort by TotalScore for display
+            sortedPlayers = leaderboardFinalData.Players.sort((a: Player, b: Player) => {
               if (a.TotalScore === null && b.TotalScore === null) return 0;
               if (a.TotalScore === null) return 1;
               if (b.TotalScore === null) return -1;
               return a.TotalScore - b.TotalScore;
-            }).map((player: Player) => ({
-              ...player,
-              TotalThrough: newThruMap.get(player.PlayerID) ?? null
-            }));
+            });
+            // If you need to add THRU/tee time, do it here to sortedPlayers
+            // (currently not merging THRU into player objects)
             console.log('Final sortedPlayers with deduced THRU:', sortedPlayers);
           }
         }
+        // Ensure FirstName and LastName are present for each player
+        sortedPlayers = sortedPlayers.map((player: Player & { Name?: string }) => ({
+          ...player,
+          FirstName: player.FirstName || (player.Name ? player.Name.split(' ')[0] : ''),
+          LastName: player.LastName || (player.Name ? player.Name.split(' ').slice(1).join(' ') : ''),
+        }));
         setPlayers(sortedPlayers);
         setThruMap(newThruMap);
 
@@ -838,8 +845,8 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               players={players}
               teamPlayers={teamPlayers}
               getPlayerStatus={getPlayerStatus}
-              calculatePlayerScore={calculatePlayerScore}
-              renderPlayerScore={renderPlayerScore}
+              calculatePlayerScore={(player, allPlayers) => calculatePlayerScore(player, allPlayers, true)}
+              renderPlayerScore={(player, score, status) => renderPlayerScore(player, score, status, true)}
               selectedPlayerId={selectedPlayerId}
               setSelectedPlayerId={setSelectedPlayerId}
               golfersMap={golfersMap}

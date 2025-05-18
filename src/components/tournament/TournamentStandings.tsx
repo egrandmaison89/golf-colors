@@ -11,7 +11,7 @@ interface TournamentStandingsProps {
   teamPlayers: TeamPlayer[];
   onPlayerSelection: (playerId: number) => void;
   getPlayerStatus: (player: Player) => 'active' | 'cut' | 'withdrawn';
-  calculatePlayerScore: (player: Player, allPlayers: Player[]) => number;
+  calculatePlayerScore: (player: Player, allPlayers: Player[], isDraftedTab: boolean) => number;
   renderPlayerScore: (player: Player, score: number, status: 'active' | 'cut' | 'withdrawn') => string;
 }
 
@@ -62,7 +62,7 @@ export function TournamentStandings({
               // Debug log for PlayerRoundScore
               console.log('Player:', player.FirstName, player.LastName, 'PlayerRoundScore:', player.PlayerRoundScore);
               const status = getPlayerStatus(player);
-              const score = calculatePlayerScore(player, players);
+              const score = calculatePlayerScore(player, players, false);
               const isPlayerSelected = selectedPlayers.includes(player.PlayerID);
               const isPlayerTaken = teamPlayers.some(tp => 
                 tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
