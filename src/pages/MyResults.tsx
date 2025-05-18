@@ -221,151 +221,172 @@ export function useMyResults(): UseMyResultsReturn {
           let earnings = 0;
 
           if (status === 'completed' || status === 'active') {
-            const scoresResponse = await fetch(
-              `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournament.TournamentID}?key=${API_KEY}`
-            );
-            
-            if (scoresResponse.ok) {
-              const scoresData = await scoresResponse.json();
-              
-              const { data: teamPlayersData } = await supabase
-                .from('team_players')
-                .select(`
-                  player_id,
-                  tournament_entries!inner(
-                    id,
-                    tournament_id,
-                    profiles (
-                      team_name
-                    )
+            let playersData: any[] = [];
+            if (status === 'active') {
+              // Use LeaderboardBasic for in-progress tournaments
+              const leaderboardResponse = await fetch(
+                `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournament.TournamentID}?key=${API_KEY}`
+              );
+              if (leaderboardResponse.ok) {
+                const leaderboardData = await leaderboardResponse.json();
+                playersData = leaderboardData.Players || [];
+              }
+            } else if (status === 'completed') {
+              // Use LeaderboardBasicFinal for completed tournaments (optional, fallback to PlayerTournamentRoundScores)
+              const leaderboardFinalResponse = await fetch(
+                `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournament.TournamentID}?key=${API_KEY}`
+              );
+              if (leaderboardFinalResponse.ok) {
+                const leaderboardFinalData = await leaderboardFinalResponse.json();
+                playersData = leaderboardFinalData.Players || [];
+              } else {
+                // fallback
+                const scoresResponse = await fetch(
+                  `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournament.TournamentID}?key=${API_KEY}`
+                );
+                if (scoresResponse.ok) {
+                  playersData = await scoresResponse.json();
+                }
+              }
+            }
+
+            const { data: teamPlayersData } = await supabase
+              .from('team_players')
+              .select(`
+                player_id,
+                tournament_entries!inner(
+                  id,
+                  tournament_id,
+                  profiles (
+                    team_name
                   )
-                `)
-                .eq('tournament_entries.tournament_id', tournament.TournamentID);
+                )
+              `)
+              .eq('tournament_entries.tournament_id', tournament.TournamentID);
 
-              if (!teamPlayersData) return;
+            if (!teamPlayersData) return;
 
-              const teamScores = new Map<string, number>();
-              const teamEntries = new Map<string, string>();
+            const teamScores = new Map<string, number>();
+            const teamEntries = new Map<string, string>();
 
-              // Skip if user hasn't created a team yet
-              if (entry.team_players.length === 0) {
-                return {
-                  tournament,
-                  place: 0,
-                  teamScore: 0,
-                  status,
-                  winnerBonus: 0,
-                  earnings: 0
-                };
+            // Skip if user hasn't created a team yet
+            if (entry.team_players.length === 0) {
+              return {
+                tournament,
+                place: 0,
+                teamScore: 0,
+                status,
+                winnerBonus: 0,
+                earnings: 0
+              };
+            }
+
+            for (const tp of entry.team_players) {
+              const player = playersData.find((p: any) => p.PlayerID === tp.player_id);
+              if (player) {
+                const score = calculatePlayerScore(player, playersData, true);
+                teamScore += score;
               }
+            }
 
-              for (const tp of entry.team_players) {
-                const player = scoresData.find((p: any) => p.PlayerID === tp.player_id);
-                if (player) {
-                  const score = calculatePlayerScore(player, scoresData);
-                  teamScore += score;
+            for (const tp of teamPlayersData) {
+              const player = playersData.find((p: any) => p.PlayerID === tp.player_id);
+              if (player) {
+                const score = calculatePlayerScore(player, playersData, true);
+                const teamName = tp.tournament_entries?.profiles?.team_name || 'Unknown Team';
+                teamEntries.set(teamName, tp.tournament_entries.id);
+                teamScores.set(
+                  teamName,
+                  (teamScores.get(teamName) || 0) + score
+                );
+              }
+            }
+
+            const sortedTeams = Array.from(teamScores.entries())
+              .sort(([, scoreA], [, scoreB]) => scoreA - scoreB);
+
+            // If no teams have scores yet, return placeholder result
+            if (sortedTeams.length === 0) {
+              return {
+                tournament,
+                place: 0,
+                teamScore: 0,
+                status,
+                winnerBonus: 0,
+                earnings: 0
+              };
+            }
+
+            const userTeamName = entry.profiles.team_name;
+            place = sortedTeams.findIndex(([name]) => name === userTeamName) + 1;
+
+            if (status === 'completed') {
+              if (place === 1) {
+                const strokesAhead = sortedTeams
+                  .filter(([name]) => name !== userTeamName)
+                  .reduce((sum, [, score]) => sum + (score - teamScore), 0);
+                earnings = strokesAhead;
+                
+                // Store tournament results
+                const { error: resultError } = await supabase.from('tournament_results').insert({
+                  tournament_id: tournament.TournamentID,
+                  team_name: userTeamName,
+                  team_color: user.user_metadata?.team_color || 'Blue',
+                  total_score: teamScore,
+                  place,
+                  earnings,
+                  winner_bonus: winnerBonus,
+                  completed_at: endDate
+                }).select().single();
+                
+                if (resultError && resultError.code !== '23505') {
+                  console.error('Error storing tournament results:', resultError);
                 }
-              }
 
-              for (const tp of teamPlayersData) {
-                const player = scoresData.find((p: any) => p.PlayerID === tp.player_id);
-                if (player) {
-                  const score = calculatePlayerScore(player, scoresData);
-                  const teamName = tp.tournament_entries?.profiles?.team_name || 'Unknown Team';
-                  teamEntries.set(teamName, tp.tournament_entries.id);
-                  teamScores.set(
-                    teamName,
-                    (teamScores.get(teamName) || 0) + score
-                  );
+                const tournamentWinner = playersData
+                  .sort((a: any, b: any) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
+                
+                if (entry.team_players.some(tp => tp.player_id === tournamentWinner.PlayerID)) {
+                  const playerRank = entry.team_players
+                    .map(tp => playersData.find((p: any) => p.PlayerID === tp.player_id))
+                    .sort((a: any, b: any) => (a.WorldGolfRank || 999) - (b.WorldGolfRank || 999))
+                    .findIndex(p => p.PlayerID === tournamentWinner.PlayerID);
+                  
+                  winnerBonus = playerRank === 0 ? 10 : playerRank === 1 ? 20 : 30;
+                  earnings += winnerBonus;
                 }
-              }
+              } else {
+                const winner = sortedTeams[0];
+                const strokesBehind = teamScores.get(userTeamName)! - teamScores.get(winner[0])!;
+                earnings = -strokesBehind;
+                
+                // Store tournament results
+                const { error: resultError } = await supabase.from('tournament_results').insert({
+                  tournament_id: tournament.TournamentID,
+                  team_name: userTeamName,
+                  team_color: user.user_metadata?.team_color || 'Blue',
+                  total_score: teamScore,
+                  place,
+                  earnings,
+                  winner_bonus: 0,
+                  completed_at: endDate
+                }).select().single();
+                
+                if (resultError && resultError.code !== '23505') {
+                  console.error('Error storing tournament results:', resultError);
+                }
 
-              const sortedTeams = Array.from(teamScores.entries())
-                .sort(([, scoreA], [, scoreB]) => scoreA - scoreB);
-
-              // If no teams have scores yet, return placeholder result
-              if (sortedTeams.length === 0) {
-                return {
-                  tournament,
-                  place: 0,
-                  teamScore: 0,
-                  status,
-                  winnerBonus: 0,
-                  earnings: 0
-                };
-              }
-
-              const userTeamName = entry.profiles.team_name;
-              place = sortedTeams.findIndex(([name]) => name === userTeamName) + 1;
-
-              if (status === 'completed') {
-                if (place === 1) {
-                  const strokesAhead = sortedTeams
-                    .filter(([name]) => name !== userTeamName)
-                    .reduce((sum, [, score]) => sum + (score - teamScore), 0);
-                  earnings = strokesAhead;
-                  
-                  // Store tournament results
-                  const { error: resultError } = await supabase.from('tournament_results').insert({
-                    tournament_id: tournament.TournamentID,
-                    team_name: userTeamName,
-                    team_color: user.user_metadata?.team_color || 'Blue',
-                    total_score: teamScore,
-                    place,
-                    earnings,
-                    winner_bonus: winnerBonus,
-                    completed_at: endDate
-                  }).select().single();
-                  
-                  if (resultError && resultError.code !== '23505') {
-                    console.error('Error storing tournament results:', resultError);
-                  }
-
-                  const tournamentWinner = scoresData
-                    .sort((a: any, b: any) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
-                  
-                  if (entry.team_players.some(tp => tp.player_id === tournamentWinner.PlayerID)) {
-                    const playerRank = entry.team_players
-                      .map(tp => scoresData.find((p: any) => p.PlayerID === tp.player_id))
-                      .sort((a: any, b: any) => (a.WorldGolfRank || 999) - (b.WorldGolfRank || 999))
-                      .findIndex(p => p.PlayerID === tournamentWinner.PlayerID);
-                    
-                    winnerBonus = playerRank === 0 ? 10 : playerRank === 1 ? 20 : 30;
-                    earnings += winnerBonus;
-                  }
-                } else {
-                  const winner = sortedTeams[0];
-                  const strokesBehind = teamScores.get(userTeamName)! - teamScores.get(winner[0])!;
-                  earnings = -strokesBehind;
-                  
-                  // Store tournament results
-                  const { error: resultError } = await supabase.from('tournament_results').insert({
-                    tournament_id: tournament.TournamentID,
-                    team_name: userTeamName,
-                    team_color: user.user_metadata?.team_color || 'Blue',
-                    total_score: teamScore,
-                    place,
-                    earnings,
-                    winner_bonus: 0,
-                    completed_at: endDate
-                  }).select().single();
-                  
-                  if (resultError && resultError.code !== '23505') {
-                    console.error('Error storing tournament results:', resultError);
-                  }
-
-                  const tournamentWinner = scoresData
-                    .sort((a: any, b: any) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
-                  
-                  const winnerEntry = teamPlayersData.find(tp => 
-                    tp.tournament_entries.profiles.team_name === winner[0]
-                  );
-                  
-                  if (winnerEntry && winnerEntry.player_id === tournamentWinner.PlayerID) {
-                    const teamsFromBottom = sortedTeams.length - place;
-                    if (teamsFromBottom < 3) {
-                      earnings -= 10;
-                    }
+                const tournamentWinner = playersData
+                  .sort((a: any, b: any) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
+                
+                const winnerEntry = teamPlayersData.find(tp => 
+                  tp.tournament_entries.profiles.team_name === winner[0]
+                );
+                
+                if (winnerEntry && winnerEntry.player_id === tournamentWinner.PlayerID) {
+                  const teamsFromBottom = sortedTeams.length - place;
+                  if (teamsFromBottom < 3) {
+                    earnings -= 10;
                   }
                 }
               }
