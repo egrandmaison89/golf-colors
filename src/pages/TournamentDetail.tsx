@@ -481,23 +481,14 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               }
             }
           } else {
-            // Fetch final leaderboard data for cut logic
-            const leaderboardFinalResponse = await fetch(
-              `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournamentId}?key=${API_KEY}`
-            );
-            if (!leaderboardFinalResponse.ok) throw new Error('Failed to fetch final leaderboard');
-            const leaderboardFinalData = await leaderboardFinalResponse.json();
-            if (!leaderboardFinalData.Players) throw new Error('No player data in final leaderboard');
-            sortedPlayers = leaderboardFinalData.Players;
-            // Optionally, fetch per-hole data for THRU/tee time if needed
-            // Fetch leaderboard for per-hole data
+            // Fetch main leaderboard/player data from LeaderboardBasic (not Final)
             const leaderboardResponse = await fetch(
               `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournamentId}?key=${API_KEY}`
             );
-            let leaderboardData: unknown = null;
-            if (leaderboardResponse.ok) {
-              leaderboardData = await leaderboardResponse.json();
-            }
+            if (!leaderboardResponse.ok) throw new Error('Failed to fetch leaderboard');
+            const leaderboardData = await leaderboardResponse.json();
+            if (!leaderboardData.Players) throw new Error('No player data in leaderboard');
+            sortedPlayers = leaderboardData.Players;
             // Build a map of PlayerID to THRU (holes completed) and TeeTime using robust round selection
             if (
               leaderboardData &&
@@ -541,16 +532,18 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                 newThruMap.set(player.PlayerID, { holesCompleted, teeTime });
               });
             }
-            // Optionally, sort by TotalScore for display
-            sortedPlayers = leaderboardFinalData.Players.sort((a: Player, b: Player) => {
-              if (a.TotalScore === null && b.TotalScore === null) return 0;
-              if (a.TotalScore === null) return 1;
-              if (b.TotalScore === null) return -1;
-              return a.TotalScore - b.TotalScore;
-            });
-            // If you need to add THRU/tee time, do it here to sortedPlayers
-            // (currently not merging THRU into player objects)
-            console.log('Final sortedPlayers with deduced THRU:', sortedPlayers);
+            // Optionally, fetch LeaderboardBasicFinal for cut logic if tournament is over
+            // (do not overwrite sortedPlayers)
+            // Example:
+            // if (tournament && new Date(tournament.EndDate) < new Date()) {
+            //   const leaderboardFinalResponse = await fetch(
+            //     `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournamentId}?key=${API_KEY}`
+            //   );
+            //   if (leaderboardFinalResponse.ok) {
+            //     const leaderboardFinalData = await leaderboardFinalResponse.json();
+            //     // Use leaderboardFinalData for cut logic only if needed
+            //   }
+            // }
           }
         }
         // Ensure FirstName and LastName are present for each player
