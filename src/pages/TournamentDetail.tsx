@@ -177,7 +177,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             <tbody className="bg-white divide-y divide-gray-200">
               {players.map((player) => {
                 const status = getPlayerStatus(player);
-                const score = calculatePlayerScore(player, players, false);
+                const score = calculatePlayerScore(player, players, true);
                 const isPlayerSelected = selectedPlayers.includes(player.PlayerID);
                 const isPlayerTaken = teamPlayers.some(tp => 
                   tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
@@ -292,7 +292,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
 
       const teamName = tp.profile.team_name;
       const status = getPlayerStatus(player);
-      const playerScore = calculatePlayerScore(player, players, false);
+      const playerScore = calculatePlayerScore(player, players, true);
 
       if (!teamScoresMap.has(teamName)) {
         teamScoresMap.set(teamName, {

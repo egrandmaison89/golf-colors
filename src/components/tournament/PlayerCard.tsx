@@ -66,13 +66,66 @@ const PlayerScorecard: React.FC<{ player: PlayerWithRounds; round?: Round }> = (
   if (!selectedRound || !Array.isArray(selectedRound.Holes)) return null;
   const holes = selectedRound.Holes;
   console.log('PlayerScorecard: holes', holes);
-  const parRow = holes.map((h) => h.Par ?? 0);
-  // Restore correct OUT/IN/TOT for Par row
-  const outPar = parRow.slice(0, 9).reduce((a, b) => a + b, 0);
-  const inPar = parRow.slice(9, 18).reduce((a, b) => a + b, 0);
+
+  // If holes array is empty, show a message and return blank scorecard
+  if (!holes.length) {
+    return (
+      <div className="mt-6 w-full overflow-x-auto">
+        <div className="font-semibold mb-2">Scorecard</div>
+        <div className="text-gray-500 italic mb-2">No scorecard data available for this round yet.</div>
+        <table className="min-w-max text-center border rounded-lg bg-white/90">
+          <thead>
+            <tr>
+              <th className="px-2 py-1 text-xs text-gray-500">HOLE</th>
+              {[...Array(18)].map((_, i) => (
+                <th key={i} className="px-2 py-1 text-xs text-gray-500">{i + 1}</th>
+              ))}
+              <th className="px-2 py-1 text-xs text-gray-500">OUT</th>
+              <th className="px-2 py-1 text-xs text-gray-500">IN</th>
+              <th className="px-2 py-1 text-xs text-gray-500">TOT</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="px-2 py-1 text-xs text-gray-500">Par</td>
+              {[...Array(18)].map((_, i) => (
+                <td key={i} className="px-2 py-1 text-xs text-gray-500">&mdash;</td>
+              ))}
+              <td className="px-2 py-1 text-xs text-gray-500">&mdash;</td>
+              <td className="px-2 py-1 text-xs text-gray-500">&mdash;</td>
+              <td className="px-2 py-1 text-xs text-gray-500">&mdash;</td>
+            </tr>
+            <tr>
+              <td className="px-2 py-1 text-xs font-bold">Score</td>
+              {[...Array(18)].map((_, i) => (
+                <td key={i} className={`px-2 py-1 rounded font-semibold`}> &mdash; </td>
+              ))}
+              <td className="px-2 py-1 font-bold">&mdash;</td>
+              <td className="px-2 py-1 font-bold">&mdash;</td>
+              <td className="px-2 py-1 font-bold">&mdash;</td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="flex gap-4 mt-2 text-xs items-center">
+          <div className="flex items-center gap-1"><span className="inline-block w-4 h-4 rounded bg-yellow-200 border"></span> EAGLE</div>
+          <div className="flex items-center gap-1"><span className="inline-block w-4 h-4 rounded bg-green-200 border"></span> BIRDIE</div>
+          <div className="flex items-center gap-1"><span className="inline-block w-4 h-4 rounded bg-red-200 border"></span> BOGEY</div>
+          <div className="flex items-center gap-1"><span className="inline-block w-4 h-4 rounded bg-blue-200 border"></span> DBL BOGEY OR MORE</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Compute Par row: show par if present, blank if null
+  const parRow = holes.map((h) => h.Par != null ? h.Par : '—');
+  const sumPar = (arr: (string | number)[]): number => arr.reduce((a: number, b) => (typeof b === 'number' ? a + b : a), 0);
+  const outPar = sumPar(parRow.slice(0, 9));
+  const inPar = sumPar(parRow.slice(9, 18));
   const totPar = outPar + inPar;
-  // Compute score for each hole using Par and boolean flags
+
+  // Compute score for each hole using Par and boolean flags, but only if Score is a number
   const computedScoreRow = holes.map((h) => {
+    if (h.Score == null) return '';
     if (h.HoleInOne) return 1;
     if (h.Eagle) return (h.Par || 0) - 2;
     if (h.Birdie) return (h.Par || 0) - 1;
@@ -80,13 +133,16 @@ const PlayerScorecard: React.FC<{ player: PlayerWithRounds; round?: Round }> = (
     if (h.Bogey) return (h.Par || 0) + 1;
     if (h.DoubleBogey) return (h.Par || 0) + 2;
     if (h.WorseThanDoubleBogey) return (h.Par || 0) + 3;
-    return '';
+    // If all booleans are false and Score is not null, just show the Score
+    return h.Score;
   });
-  // OUT/IN/TOT for computed scores
+
+  // OUT/IN/TOT for computed scores: sum only completed holes (not blank)
   const sumNumbers = (arr: (string | number)[]): number => arr.reduce((a: number, b) => (typeof b === 'number' ? a + b : a), 0);
   const outScore = sumNumbers(computedScoreRow.slice(0, 9));
   const inScore = sumNumbers(computedScoreRow.slice(9, 18));
   const totScore = outScore + inScore;
+
   return (
     <div className="mt-6 w-full overflow-x-auto">
       <div className="font-semibold mb-2">Scorecard</div>
@@ -108,20 +164,20 @@ const PlayerScorecard: React.FC<{ player: PlayerWithRounds; round?: Round }> = (
             {parRow.map((par, i) => (
               <td key={i} className="px-2 py-1 text-xs text-gray-500">{par}</td>
             ))}
-            <td className="px-2 py-1 text-xs text-gray-500">{outPar}</td>
-            <td className="px-2 py-1 text-xs text-gray-500">{inPar}</td>
-            <td className="px-2 py-1 text-xs text-gray-500">{totPar}</td>
+            <td className="px-2 py-1 text-xs text-gray-500">{outPar > 0 ? outPar : '—'}</td>
+            <td className="px-2 py-1 text-xs text-gray-500">{inPar > 0 ? inPar : '—'}</td>
+            <td className="px-2 py-1 text-xs text-gray-500">{totPar > 0 ? totPar : '—'}</td>
           </tr>
           <tr>
             <td className="px-2 py-1 text-xs font-bold">Score</td>
             {computedScoreRow.map((score, i) => (
-              <td key={i} className={`px-2 py-1 rounded ${scoreColors[getScoreType(holes[i])]} font-semibold`}>
-                {score}
+              <td key={i} className={`px-2 py-1 rounded ${score !== '' ? scoreColors[getScoreType(holes[i])] : ''} font-semibold`}>
+                {score === '' ? '—' : score}
               </td>
             ))}
-            <td className="px-2 py-1 font-bold">{outScore}</td>
-            <td className="px-2 py-1 font-bold">{inScore}</td>
-            <td className="px-2 py-1 font-bold">{totScore}</td>
+            <td className="px-2 py-1 font-bold">{outScore || '—'}</td>
+            <td className="px-2 py-1 font-bold">{inScore || '—'}</td>
+            <td className="px-2 py-1 font-bold">{totScore || '—'}</td>
           </tr>
         </tbody>
       </table>
