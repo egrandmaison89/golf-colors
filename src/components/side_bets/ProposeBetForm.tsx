@@ -18,11 +18,27 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
 
   useEffect(() => {
     async function fetchUsers() {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, team_name')
-        .neq('id', currentUserId);
-      if (!error && data) setUsers(data);
+      try {
+        console.log('Fetching users for opponent dropdown');
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, team_name')
+          .neq('id', currentUserId);
+        
+        if (error) {
+          console.error('Error fetching users:', error);
+          return;
+        }
+        
+        console.log('Fetched users:', data?.length || 0);
+        if (data && data.length > 0) {
+          setUsers(data);
+        } else {
+          console.warn('No users found or empty data returned');
+        }
+      } catch (err) {
+        console.error('Exception fetching users:', err);
+      }
     }
     fetchUsers();
   }, [currentUserId]);
@@ -32,6 +48,13 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
     setLoading(true);
     setError(null);
     try {
+      console.log('Submitting bet with values:', {
+        description,
+        amount,
+        odds,
+        proposer_id: currentUserId,
+        opponent_id: opponentId === 'anyone' ? null : opponentId
+      });
       const opponentValue = opponentId === 'anyone' ? null : opponentId;
       const { error } = await supabase.from('side_bets').insert({
         description,
@@ -43,7 +66,10 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
         status: 'proposed',
         winner_id: null
       });
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error when inserting bet:', error);
+        throw error;
+      }
       setDescription('');
       setAmount('');
       setOdds('');
@@ -52,8 +78,12 @@ export function ProposeBetForm({ onBetProposed, currentUserId }: ProposeBetFormP
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError((err as any).message || 'Failed to propose bet');
+      console.error('Error submitting bet:', err);
+      if (err instanceof Error) {
+        setError(err.message || 'Failed to propose bet. Check console for details.');
+      } else {
+        setError('Failed to propose bet. Check console for details.');
+      }
     } finally {
       setLoading(false);
     }
