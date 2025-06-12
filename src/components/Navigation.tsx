@@ -33,6 +33,7 @@ export function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<SideBetNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const navigate = useNavigate();
@@ -64,7 +65,11 @@ export function Navigation() {
   // Fetch notifications on mount and whenever user changes
   useEffect(() => {
     async function fetchNotifications() {
-      if (!user?.user) return setNotifications([]);
+      if (!user?.user) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
       const userId = user.user.id;
       // Fetch incoming side bets
       const { data, error } = await supabase
@@ -73,7 +78,11 @@ export function Navigation() {
         .or(`opponent_id.eq.${userId},opponent_id.is.null`)
         .eq('status', 'proposed')
         .order('created_at', { ascending: false });
-      if (error) return setNotifications([]);
+      if (error) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const incoming = (data || []).filter((bet: any) => bet.opponent_id === userId || (bet.opponent_id === null && bet.proposer_id !== userId)).map((bet: any) => ({
         id: bet.id,
@@ -109,7 +118,19 @@ export function Navigation() {
         responseStatus: bet.status,
         responderTeamName: bet.opponent?.team_name || 'Opponent',
       }));
-      setNotifications([...incoming, ...responseNotifications].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      const allNotifications = [...incoming, ...responseNotifications].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setNotifications(allNotifications);
+      // Unread logic
+      const lastViewedKey = `notifications_last_viewed_${userId}`;
+      const lastViewed = localStorage.getItem(lastViewedKey);
+      let unread = 0;
+      if (lastViewed) {
+        const lastViewedDate = new Date(lastViewed);
+        unread = allNotifications.filter(n => new Date(n.created_at) > lastViewedDate).length;
+      } else {
+        unread = allNotifications.length;
+      }
+      setUnreadCount(unread);
     }
     fetchNotifications();
   }, [user]);
@@ -210,6 +231,14 @@ export function Navigation() {
     setProfile(null);
   }
 
+  // Helper to get last viewed timestamp for current user
+  function getLastViewed() {
+    if (!user?.user) return null;
+    const lastViewedKey = `notifications_last_viewed_${user.user.id}`;
+    const lastViewed = localStorage.getItem(lastViewedKey);
+    return lastViewed ? new Date(lastViewed) : null;
+  }
+
   return (
     <>
       <nav className="bg-white shadow-lg">
@@ -228,14 +257,21 @@ export function Navigation() {
                 <div className="flex items-center space-x-4">
                   {/* Notification Bell */}
                   <button
-                    onClick={() => setShowNotifications(true)}
+                    onClick={() => {
+                      setShowNotifications(true);
+                      if (user?.user) {
+                        const lastViewedKey = `notifications_last_viewed_${user.user.id}`;
+                        localStorage.setItem(lastViewedKey, new Date().toISOString());
+                        setUnreadCount(0);
+                      }
+                    }}
                     className="relative flex items-center justify-center p-2 rounded-full hover:bg-gray-100 focus:outline-none"
                     aria-label="Notifications"
                   >
                     <Bell className="h-6 w-6 text-gray-600" />
-                    {notifications.length > 0 && (
+                    {unreadCount > 0 && (
                       <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full transform translate-x-1/2 -translate-y-1/2">
-                        {notifications.length}
+                        {unreadCount}
                       </span>
                     )}
                   </button>
@@ -287,7 +323,14 @@ export function Navigation() {
                     <div className="space-y-4">
                       {/* Notification Bell in mobile menu */}
                       <button
-                        onClick={() => { setShowNotifications(true); setIsMobileMenuOpen(false); }}
+                        onClick={() => {
+                          setShowNotifications(true);
+                          if (user?.user) {
+                            const lastViewedKey = `notifications_last_viewed_${user.user.id}`;
+                            localStorage.setItem(lastViewedKey, new Date().toISOString());
+                            setUnreadCount(0);
+                          }
+                        }}
                         className="relative flex items-center space-x-2 text-gray-600 hover:text-gray-900 w-full"
                         aria-label="Notifications"
                       >
@@ -349,32 +392,45 @@ export function Navigation() {
               <div className="text-gray-500">No notifications yet.</div>
             ) : (
               <ul className="divide-y divide-gray-200">
-                {notifications.map((notif) => (
-                  <li key={notif.id + notif.type + (notif.responseStatus || '')} className="py-3 cursor-pointer hover:bg-gray-50 rounded transition-colors" onClick={() => {
-                    setShowNotifications(false);
-                    if (notif.type === 'incoming') {
-                      navigate(`/side-bets?betId=${notif.id}`);
-                      setTimeout(() => {
-                        const el = document.getElementById(`side-bet-${notif.id}`);
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }, 500);
-                    }
-                  }}>
-                    {notif.type === 'incoming' ? (
-                      <>
-                        <div className="font-semibold text-gray-900">New Side Bet proposed by {notif.proposer?.team_name || 'Unknown'}</div>
-                        <div className="text-gray-700 text-sm">{notif.description} (${notif.amount}, Odds: {notif.odds})</div>
-                        <div className="text-xs text-gray-400">Proposed {new Date(notif.created_at).toLocaleString()}</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="font-semibold text-gray-900">Your Side Bet was {notif.responseStatus} by {notif.responderTeamName}</div>
-                        <div className="text-gray-700 text-sm">{notif.description} (${notif.amount}, Odds: {notif.odds})</div>
-                        <div className="text-xs text-gray-400">Updated {new Date(notif.created_at).toLocaleString()}</div>
-                      </>
-                    )}
-                  </li>
-                ))}
+                {notifications.map((notif) => {
+                  const lastViewed = getLastViewed();
+                  const isUnread = lastViewed ? new Date(notif.created_at) > lastViewed : true;
+                  return (
+                    <li
+                      key={notif.id + notif.type + (notif.responseStatus || '')}
+                      className={`py-4 cursor-pointer rounded transition-colors ${isUnread ? 'bg-blue-50 border-l-4 border-blue-500' : 'hover:bg-gray-50'} mb-2`}
+                      onClick={() => {
+                        setShowNotifications(false);
+                        if (notif.type === 'incoming') {
+                          navigate(`/side-bets?betId=${notif.id}`);
+                          setTimeout(() => {
+                            const el = document.getElementById(`side-bet-${notif.id}`);
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 500);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isUnread && <span className="w-2 h-2 rounded-full bg-blue-500 inline-block flex-shrink-0" title="New" />}
+                        <span className="font-semibold text-gray-900">
+                          {notif.type === 'incoming'
+                            ? `New Side Bet proposed by ${notif.proposer?.team_name || 'Unknown'}`
+                            : `Your Side Bet was ${notif.responseStatus} by ${notif.responderTeamName}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-1 gap-2">
+                        <span className="text-gray-700 text-sm">
+                          {notif.description} (${notif.amount}, Odds: {notif.odds})
+                        </span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap text-right ml-4">
+                          {notif.type === 'incoming'
+                            ? `Proposed ${new Date(notif.created_at).toLocaleString()}`
+                            : `Updated ${new Date(notif.created_at).toLocaleString()}`}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

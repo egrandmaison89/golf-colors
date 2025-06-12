@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 export default function SideBets() {
   const [user, setUser] = useState<any>(null);
   const [refresh, setRefresh] = useState(0);
+  const [showForm, setShowForm] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -30,7 +31,34 @@ export default function SideBets() {
       <h1 className="text-3xl font-bold mb-6">Side Bets</h1>
       <p className="mb-8 text-gray-700">Propose, accept, and view side bets between users. All bets are public and visible to all visitors.</p>
       {user && (
-        <ProposeBetForm onBetProposed={() => setRefresh(r => r + 1)} currentUserId={user.id} />
+        <div className="mb-6">
+          <button
+            className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 transition-colors font-semibold shadow"
+            onClick={() => setShowForm(true)}
+          >
+            Propose Side Bet
+          </button>
+        </div>
+      )}
+      {showForm && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md relative">
+            <button
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-2xl font-bold"
+              onClick={() => setShowForm(false)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <ProposeBetForm
+              onBetProposed={() => {
+                setShowForm(false);
+                setRefresh(r => r + 1);
+              }}
+              currentUserId={user.id}
+            />
+          </div>
+        </div>
       )}
       <BetList key={refresh} currentUser={user} />
     </div>
