@@ -388,6 +388,7 @@ export function Navigation() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+            {/* Only All tab for notifications */}
             {notifications.length === 0 ? (
               <div className="text-gray-500">No notifications yet.</div>
             ) : (
@@ -401,13 +402,11 @@ export function Navigation() {
                       className={`py-4 cursor-pointer rounded transition-colors ${isUnread ? 'bg-blue-50 border-l-4 border-blue-500' : 'hover:bg-gray-50'} mb-2`}
                       onClick={() => {
                         setShowNotifications(false);
-                        if (notif.type === 'incoming') {
-                          navigate(`/side-bets?betId=${notif.id}`);
-                          setTimeout(() => {
-                            const el = document.getElementById(`side-bet-${notif.id}`);
-                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }, 500);
-                        }
+                        navigate(`/side-bets?betId=${notif.id}`);
+                        setTimeout(() => {
+                          const el = document.getElementById(`side-bet-${notif.id}`);
+                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 500);
                       }}
                     >
                       <div className="flex items-center gap-2">
