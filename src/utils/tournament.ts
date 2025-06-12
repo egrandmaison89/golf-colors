@@ -21,7 +21,7 @@ export function getPlayerStatus(player: Player): 'active' | 'cut' | 'withdrawn' 
   // Use MadeCut and IsWithdrawn for cut logic (LeaderboardBasicFinal)
   if ('MadeCut' in player && player.MadeCut === 0 && !player.IsWithdrawn) {
     return 'cut';
-  }
+    }
 
   // 3. If player has a tee time in the past and has not completed any holes, but is not withdrawn, treat as active
   const now = new Date();

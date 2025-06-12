@@ -1,9 +1,11 @@
 import { supabase } from './supabase';
 import type { Tournament } from '../types/tournament';
+import { loggedFetch } from './loggedFetch';
+import { cachedApiFetch } from './apiCache';
 
 const API_KEY = import.meta.env.VITE_SPORTSDATA_API_KEY;
 
-export async function getTournamentData(tournamentId: number | string): Promise<any> {
+export async function getTournamentData(tournamentId: number | string): Promise<unknown> {
   const numericId = typeof tournamentId === 'string' ? parseInt(tournamentId) : tournamentId;
   
   // First check cache
@@ -18,13 +20,10 @@ export async function getTournamentData(tournamentId: number | string): Promise<
   }
 
   // If not in cache, fetch from API
-  const response = await fetch(
-    `https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`
-  );
-  if (!response.ok) throw new Error('Failed to fetch tournament data');
-  const data = await response.json();
-  
-  const tournament = data.find((t: Tournament) => t.TournamentID === numericId);
+  const url = `https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`;
+  const data: unknown = await cachedApiFetch(url, () => loggedFetch(url, undefined, 'getTournamentData').then(r => r.json()), 60 * 60 * 1000); // 1 hour TTL
+  if (!data || !Array.isArray(data)) throw new Error('Failed to fetch tournament data');
+  const tournament = (data as Tournament[]).find((t: Tournament) => t.TournamentID === numericId);
   if (!tournament) throw new Error('Tournament not found');
 
   // Cache the data
@@ -72,11 +71,9 @@ export async function getTournamentResults(tournamentId: number | string): Promi
   }
 
   // If not in cache or tournament is ongoing, fetch from API
-  const response = await fetch(
-    `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${numericId}?key=${API_KEY}`
-  );
-  if (!response.ok) throw new Error('Failed to fetch tournament results');
-  const data = await response.json();
+  const url = `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${numericId}?key=${API_KEY}`;
+  const data = await cachedApiFetch(url, () => loggedFetch(url, undefined, 'getPlayerTournamentRoundScores').then(r => r.json()), 2 * 60 * 1000); // 2 min TTL
+  if (!data) throw new Error('Failed to fetch tournament results');
 
   // If tournament is completed, cache the results
   if (tournament && new Date(tournament.end_date) < new Date()) {
@@ -103,19 +100,17 @@ export async function getTournaments(): Promise<Tournament[]> {
   }
 
   // If not in cache, fetch from API
-  const response = await fetch(
-    `https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`
-  );
-  if (!response.ok) throw new Error('Failed to fetch tournaments');
-  const data = await response.json();
+  const url = `https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`;
+  const data: unknown = await cachedApiFetch(url, () => loggedFetch(url, undefined, 'getTournaments').then(r => r.json()), 60 * 60 * 1000); // 1 hour TTL
+  if (!data || !Array.isArray(data)) throw new Error('Failed to fetch tournaments');
 
   // Cache all tournaments
-  const tournaments = data.filter((t: Tournament) => 
-    new Date(t.StartDate).getFullYear() === 2025
+  const tournamentsData = (data as Tournament[]).filter((t: Tournament) => 
+    new Date((t as Tournament).StartDate).getFullYear() === 2025
   );
 
   await supabase.from('tournament_cache').insert(
-    tournaments.map((t: Tournament) => ({
+    tournamentsData.map((t: Tournament) => ({
       tournament_id: t.TournamentID,
       name: t.Name,
       venue: t.Venue,
@@ -126,5 +121,49 @@ export async function getTournaments(): Promise<Tournament[]> {
     }))
   );
 
-  return tournaments;
+  return tournamentsData;
+}
+
+export async function getCachedLeaderboard(tournamentId: number | string, status: 'active' | 'completed'): Promise<unknown> {
+  const cacheKey = `leaderboard_${tournamentId}_${status}`;
+  const now = Date.now();
+  // 5 min cache for active, 1 hour for completed
+  const maxAge = status === 'active' ? 5 * 60 * 1000 : 60 * 60 * 1000;
+
+  // Only use localStorage for 'active' tournaments (smaller data)
+  if (status === 'active') {
+    const cache = localStorage.getItem(cacheKey);
+    const cacheTime = localStorage.getItem(`${cacheKey}_time`);
+    if (cache && cacheTime && now - parseInt(cacheTime) < maxAge) {
+      return JSON.parse(cache);
+    }
+  }
+
+  let url = '';
+  if (status === 'active') {
+    url = `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournamentId}?key=${API_KEY}`;
+  } else {
+    url = `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournamentId}?key=${API_KEY}`;
+  }
+  const data: unknown = await cachedApiFetch(
+    url,
+    () => loggedFetch(url, undefined, 'getCachedLeaderboard').then(r => r.json()),
+    status === 'active' ? 2 * 60 * 1000 : 60 * 60 * 1000 // 2 min for active, 1 hour for completed
+  );
+  if (!data || (typeof data === 'object' && data !== null && !('Players' in data))) {
+    throw new Error('Failed to fetch leaderboard');
+  }
+
+  // Only cache in localStorage for 'active' tournaments
+  if (status === 'active') {
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      localStorage.setItem(`${cacheKey}_time`, now.toString());
+    } catch (e) {
+      // If quota exceeded or other error, skip caching
+      console.warn('Leaderboard cache error:', e);
+    }
+  }
+  // For 'completed', do not cache in localStorage (data is too large)
+  return data;
 }

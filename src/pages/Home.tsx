@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 import { useEffect, useState } from 'react';
 import { getTournaments, getTournamentResults } from '../lib/tournament-cache';
 import type { Tournament } from '../types/tournament';
+import golfersData from '../../public/golfers.json';
+import { getPlayerStatus, calculatePlayerScore } from '../utils/tournament';
 
 interface LeaderboardEntry {
   player_name: string;
@@ -25,6 +27,7 @@ export function Home() {
   const [currentTournament, setCurrentTournament] = useState<Tournament | null>(null);
   const [mostRecentCompleted, setMostRecentCompleted] = useState<Tournament | null>(null);
   const [recentWinners, setRecentWinners] = useState<{ team_names: string[], tournament_name: string } | null>(null);
+  const [golfersMap, setGolfersMap] = useState<Record<number, { FirstName: string; LastName: string }>>({});
 
   useEffect(() => {
     async function fetchTournaments() {
@@ -96,8 +99,24 @@ export function Home() {
             teamPlayersData.forEach(tp => {
               const player = resultsData.find((p: any) => p.PlayerID === tp.player_id);
               if (player && tp.tournament_entries?.profiles?.team_name) {
+                // Restore player names if missing
+                let FirstName = player.FirstName;
+                let LastName = player.LastName;
+                if (!FirstName || !LastName) {
+                  if (player.Name) {
+                    const parts = player.Name.split(' ');
+                    FirstName = FirstName || parts[0];
+                    LastName = LastName || parts.slice(1).join(' ');
+                  } else if (golfersMap[player.PlayerID]) {
+                    FirstName = golfersMap[player.PlayerID].FirstName;
+                    LastName = golfersMap[player.PlayerID].LastName;
+                  }
+                }
                 const teamName = tp.tournament_entries.profiles.team_name;
-                const score = player.TotalScore ?? ((player.TotalStrokes * 2) - (player.Par * 4));
+                // Use correct cut logic for team leaderboard
+                const score = getPlayerStatus(player) === 'cut'
+                  ? calculatePlayerScore({ ...player, FirstName, LastName }, resultsData, true)
+                  : player.TotalScore ?? 0;
                 validTeams.add(teamName);
                 teamScores.set(
                   teamName,
@@ -124,11 +143,29 @@ export function Home() {
             // Process and sort leaderboard
             const processedLeaderboard = resultsData
               .filter((p: any) => p.TotalScore !== null)
-              .sort((a: any, b: any) => a.TotalScore - b.TotalScore)
+              .map((p: any) => {
+                let FirstName = p.FirstName;
+                let LastName = p.LastName;
+                if (!FirstName || !LastName) {
+                  if (p.Name) {
+                    const parts = p.Name.split(' ');
+                    FirstName = FirstName || parts[0];
+                    LastName = LastName || parts.slice(1).join(' ');
+                  } else if (golfersMap[p.PlayerID]) {
+                    FirstName = golfersMap[p.PlayerID].FirstName;
+                    LastName = golfersMap[p.PlayerID].LastName;
+                  }
+                }
+                return {
+                  player_name: `${FirstName} ${LastName}`.trim(),
+                  total_score: p.TotalScore,
+                  position: 0 // will be set after sorting
+                };
+              })
+              .sort((a: any, b: any) => a.total_score - b.total_score)
               .slice(0, 5)
               .map((p: any, index: number) => ({
-                player_name: `${p.FirstName} ${p.LastName}`,
-                total_score: p.TotalScore,
+                ...p,
                 position: index + 1
               }));
             
@@ -229,6 +266,16 @@ export function Home() {
       }
     }
     fetchRecentWinners();
+  }, []);
+
+  useEffect(() => {
+    setGolfersMap(() => {
+      const map: Record<number, { FirstName: string; LastName: string }> = {};
+      for (const g of golfersData) {
+        map[g.PlayerID] = { FirstName: g.FirstName, LastName: g.LastName };
+      }
+      return map;
+    });
   }, []);
 
   return (

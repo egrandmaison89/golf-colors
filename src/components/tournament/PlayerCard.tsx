@@ -16,7 +16,7 @@ interface Hole {
   WorseThanDoubleBogey: boolean;
 }
 
-interface Round {
+export interface Round {
   PlayerRoundID: number;
   PlayerTournamentID: number;
   Number: number;

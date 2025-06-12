@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Trophy, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Tournament } from '../types/tournament';
+import type { Tournament, Player } from '../types/tournament';
 import { calculatePlayerScore } from '../utils/tournament';
+import { getCachedLeaderboard } from '../lib/tournament-cache';
+import { loggedFetch } from '../lib/loggedFetch';
 
 const API_KEY = import.meta.env.VITE_SPORTSDATA_API_KEY;
 
@@ -73,7 +75,7 @@ export function MyResults() {
         </div>
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="text-sm text-gray-500 mb-2">Winner Bonuses</div>
-          <div className="text-3xl font-bold text-gray-900">${stats.totalBonuses}</div>
+          <div className={`text-3xl font-mono font-bold ${stats.totalBonuses >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(stats.totalBonuses)}</div>
         </div>
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="text-sm text-gray-500 mb-2">Average Finish</div>
@@ -88,9 +90,7 @@ export function MyResults() {
         </div>
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="text-sm text-gray-500 mb-2">Team Earnings</div>
-          <div className={`text-3xl font-bold ${stats.totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            ${stats.totalEarnings >= 0 ? '+' : ''}{stats.totalEarnings}
-          </div>
+          <div className={`text-3xl font-mono font-bold ${stats.totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(stats.totalEarnings)}</div>
         </div>
       </div>
 
@@ -192,8 +192,10 @@ export function useMyResults(): UseMyResultsReturn {
 
         if (!entries) return;
 
-        const tournamentsResponse = await fetch(
-          `https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`
+        const tournamentsResponse = await loggedFetch(
+          `https://api.sportsdata.io/golf/v2/json/Tournaments?key=${API_KEY}`,
+          undefined,
+          'MyResults:Tournaments'
         );
         if (!tournamentsResponse.ok) throw new Error('Failed to fetch tournaments');
         const tournamentsData = await tournamentsResponse.json();
@@ -221,35 +223,28 @@ export function useMyResults(): UseMyResultsReturn {
           let earnings = 0;
 
           if (status === 'completed' || status === 'active') {
-            let playersData: any[] = [];
+            let playersData: Player[] = [];
             if (status === 'active') {
-              // Use LeaderboardBasic for in-progress tournaments
-              const leaderboardResponse = await fetch(
-                `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournament.TournamentID}?key=${API_KEY}`
-              );
-              if (leaderboardResponse.ok) {
-                const leaderboardData = await leaderboardResponse.json();
-                playersData = leaderboardData.Players || [];
-              }
+              const leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'active') as { Players?: Player[] };
+              playersData = leaderboardData.Players || [];
             } else if (status === 'completed') {
-              // Use LeaderboardBasicFinal for completed tournaments (optional, fallback to PlayerTournamentRoundScores)
-              const leaderboardFinalResponse = await fetch(
-                `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournament.TournamentID}?key=${API_KEY}`
-              );
-              if (leaderboardFinalResponse.ok) {
-                const leaderboardFinalData = await leaderboardFinalResponse.json();
-                playersData = leaderboardFinalData.Players || [];
-              } else {
+              let leaderboardData: { Players?: Player[] };
+              try {
+                leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'completed') as { Players?: Player[] };
+                playersData = leaderboardData.Players || [];
+              } catch {
                 // fallback
-                const scoresResponse = await fetch(
-                  `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournament.TournamentID}?key=${API_KEY}`
+                const scoresResponse = await loggedFetch(
+                  `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournament.TournamentID}?key=${API_KEY}`,
+                  undefined,
+                  'MyResults:PlayerTournamentRoundScores'
                 );
                 if (scoresResponse.ok) {
                   playersData = await scoresResponse.json();
                 }
               }
             }
-
+              
             const { data: teamPlayersData } = await supabase
               .from('team_players')
               .select(`
@@ -264,7 +259,14 @@ export function useMyResults(): UseMyResultsReturn {
               `)
               .eq('tournament_entries.tournament_id', tournament.TournamentID);
 
-            if (!teamPlayersData) return;
+            if (!teamPlayersData) return {
+              tournament,
+              place: 0,
+              teamScore: 0,
+              status,
+              winnerBonus: 0,
+              earnings: 0
+            };
 
             const teamScores = new Map<string, number>();
             const teamEntries = new Map<string, string>();
@@ -282,7 +284,7 @@ export function useMyResults(): UseMyResultsReturn {
             }
 
             for (const tp of entry.team_players) {
-              const player = playersData.find((p: any) => p.PlayerID === tp.player_id);
+              const player = playersData.find((p) => p.PlayerID === tp.player_id);
               if (player) {
                 const score = calculatePlayerScore(player, playersData, true);
                 teamScore += score;
@@ -290,11 +292,13 @@ export function useMyResults(): UseMyResultsReturn {
             }
 
             for (const tp of teamPlayersData) {
-              const player = playersData.find((p: any) => p.PlayerID === tp.player_id);
-              if (player) {
+              const player = playersData.find((p) => p.PlayerID === tp.player_id);
+              // Defensive: check for correct structure
+              const teamEntry = tp.tournament_entries as { id?: string; profiles?: { team_name?: string } } | undefined;
+              const teamName = teamEntry?.profiles?.team_name;
+              if (player && typeof teamName === 'string' && typeof teamEntry?.id === 'string') {
                 const score = calculatePlayerScore(player, playersData, true);
-                const teamName = tp.tournament_entries?.profiles?.team_name || 'Unknown Team';
-                teamEntries.set(teamName, tp.tournament_entries.id);
+                teamEntries.set(teamName, teamEntry.id);
                 teamScores.set(
                   teamName,
                   (teamScores.get(teamName) || 0) + score
@@ -303,7 +307,7 @@ export function useMyResults(): UseMyResultsReturn {
             }
 
             const sortedTeams = Array.from(teamScores.entries())
-              .sort(([, scoreA], [, scoreB]) => scoreA - scoreB);
+              .sort((a: [string, number], b: [string, number]) => a[1] - b[1]);
 
             // If no teams have scores yet, return placeholder result
             if (sortedTeams.length === 0) {
@@ -317,7 +321,20 @@ export function useMyResults(): UseMyResultsReturn {
               };
             }
 
-            const userTeamName = entry.profiles.team_name;
+            // Defensive: handle both object and array for profiles
+            let userTeamName = '';
+            if (entry.profiles && typeof entry.profiles === 'object' && !Array.isArray(entry.profiles)) {
+              userTeamName = (entry.profiles as { team_name: string }).team_name;
+            } else if (
+              Array.isArray(entry.profiles) &&
+              entry.profiles.length > 0 &&
+              typeof entry.profiles[0] === 'object' &&
+              entry.profiles[0] !== null &&
+              'team_name' in entry.profiles[0]
+            ) {
+              userTeamName = (entry.profiles[0] as { team_name: string }).team_name;
+            }
+
             place = sortedTeams.findIndex(([name]) => name === userTeamName) + 1;
 
             if (status === 'completed') {
@@ -326,73 +343,23 @@ export function useMyResults(): UseMyResultsReturn {
                   .filter(([name]) => name !== userTeamName)
                   .reduce((sum, [, score]) => sum + (score - teamScore), 0);
                 earnings = strokesAhead;
-                
-                // Store tournament results
-                const { error: resultError } = await supabase.from('tournament_results').insert({
-                  tournament_id: tournament.TournamentID,
-                  team_name: userTeamName,
-                  team_color: user.user_metadata?.team_color || 'Blue',
-                  total_score: teamScore,
-                  place,
-                  earnings,
-                  winner_bonus: winnerBonus,
-                  completed_at: endDate
-                }).select().single();
-                
-                if (resultError && resultError.code !== '23505') {
-                  console.error('Error storing tournament results:', resultError);
-                }
-
                 const tournamentWinner = playersData
-                  .sort((a: any, b: any) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
-                
+                  .sort((a, b) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
                 if (entry.team_players.some(tp => tp.player_id === tournamentWinner.PlayerID)) {
                   const playerRank = entry.team_players
-                    .map(tp => playersData.find((p: any) => p.PlayerID === tp.player_id))
-                    .sort((a: any, b: any) => (a.WorldGolfRank || 999) - (b.WorldGolfRank || 999))
-                    .findIndex(p => p.PlayerID === tournamentWinner.PlayerID);
-                  
+                    .map(tp => playersData.find((p) => p.PlayerID === tp.player_id))
+                    .sort((a, b) => (a?.WorldGolfRanking || 999) - (b?.WorldGolfRanking || 999))
+                    .findIndex(p => p && p.PlayerID === tournamentWinner.PlayerID);
                   winnerBonus = playerRank === 0 ? 10 : playerRank === 1 ? 20 : 30;
-                  earnings += winnerBonus;
                 }
               } else {
                 const winner = sortedTeams[0];
                 const strokesBehind = teamScores.get(userTeamName)! - teamScores.get(winner[0])!;
                 earnings = -strokesBehind;
-                
-                // Store tournament results
-                const { error: resultError } = await supabase.from('tournament_results').insert({
-                  tournament_id: tournament.TournamentID,
-                  team_name: userTeamName,
-                  team_color: user.user_metadata?.team_color || 'Blue',
-                  total_score: teamScore,
-                  place,
-                  earnings,
-                  winner_bonus: 0,
-                  completed_at: endDate
-                }).select().single();
-                
-                if (resultError && resultError.code !== '23505') {
-                  console.error('Error storing tournament results:', resultError);
-                }
-
-                const tournamentWinner = playersData
-                  .sort((a: any, b: any) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
-                
-                const winnerEntry = teamPlayersData.find(tp => 
-                  tp.tournament_entries.profiles.team_name === winner[0]
-                );
-                
-                if (winnerEntry && winnerEntry.player_id === tournamentWinner.PlayerID) {
-                  const teamsFromBottom = sortedTeams.length - place;
-                  if (teamsFromBottom < 3) {
-                    earnings -= 10;
-                  }
-                }
               }
             }
           }
-
+          // Always return a TournamentResult object
           return {
             tournament,
             place,
@@ -402,10 +369,9 @@ export function useMyResults(): UseMyResultsReturn {
             earnings
           };
         });
-
-        const validResults = (await Promise.all(resultsPromises)).filter((r): r is TournamentResult => r !== null);
+        const validResults = (await Promise.all(resultsPromises)).filter((r: TournamentResult | null): r is TournamentResult => r !== null);
         
-        const sortedResults = validResults.sort((a, b) => {
+        const sortedResults = validResults.sort((a: TournamentResult, b: TournamentResult) => {
           const dateA = new Date(a.tournament.StartDate);
           const dateB = new Date(b.tournament.StartDate);
           return dateA.getTime() - dateB.getTime();
@@ -425,14 +391,13 @@ export function useMyResults(): UseMyResultsReturn {
 
   const completedTournaments = results.filter(r => r.status === 'completed');
   const completedTournamentsWithFullTeam = completedTournaments.filter(r => r.place > 0);
-  const completedTournamentsWithTeam = completedTournaments.filter(r => r.place > 0);
   const stats = {
     totalWins: completedTournaments.filter(r => r.place === 1).length,
     totalBonuses: completedTournaments.reduce((sum, r) => sum + r.winnerBonus, 0),
     averageFinish: completedTournamentsWithFullTeam.length > 0
       ? (completedTournamentsWithFullTeam.reduce((sum, r) => sum + r.place, 0) / completedTournamentsWithFullTeam.length).toFixed(1)
       : 'N/A',
-    totalEarnings: completedTournaments.reduce((sum, r) => sum + (r.earnings - r.winnerBonus), 0)
+    totalEarnings: completedTournaments.reduce((sum, r) => sum + r.earnings, 0)
   };
 
   return {
@@ -441,4 +406,9 @@ export function useMyResults(): UseMyResultsReturn {
     error,
     stats
   };
+}
+
+function formatCurrency(value: number) {
+  const sign = value >= 0 ? '+' : '-';
+  return `${sign}$${Math.abs(value)}`;
 }

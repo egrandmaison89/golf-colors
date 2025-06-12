@@ -1,71 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, DollarSign, Users } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-
-interface LeaderboardEntry {
-  team_name: string;
-  team_color: string;
-  total_earnings: number;
-  average_finish: string;
-}
+import { Users } from 'lucide-react';
+import { fetchYearlyLeaderboard, YearlyLeaderboardEntry } from '../utils/leaderboard';
 
 export function LeagueOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboard, setLeaderboard] = useState<YearlyLeaderboardEntry[]>([]);
 
   useEffect(() => {
-    async function fetchProfiles() {
+    async function fetchLeaderboard() {
       try {
-        // Get all profiles
-        const { data: profiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('team_name, team_color');
-
-        if (profilesError) throw profilesError;
-        if (!profiles) return;
-
-        // Get tournament results for each profile
-        const leaderboardData = await Promise.all(
-          profiles.map(async (profile) => {
-            // Get all tournament results for this team
-            const { data: results, error: resultsError } = await supabase
-              .from('tournament_results')
-              .select('earnings, winner_bonus, place')
-              .eq('team_name', profile.team_name);
-
-            if (resultsError) throw resultsError;
-
-            // Calculate total earnings
-            const totalEarnings = results?.reduce((sum, result) => {
-              return sum + (result.earnings || 0) + (result.winner_bonus || 0);
-            }, 0) || 0;
-
-            // Calculate average finish
-            const completedTournaments = results?.filter(r => r.place > 0) || [];
-            const averageFinish = completedTournaments.length > 0
-              ? (completedTournaments.reduce((sum, r) => sum + r.place, 0) / completedTournaments.length).toFixed(1)
-              : 'N/A';
-
-            return {
-              team_name: profile.team_name,
-              team_color: profile.team_color || 'Blue',
-              total_earnings: totalEarnings,
-              average_finish: averageFinish
-            };
-          })
-        );
-
-        // Sort by total earnings
-        setLeaderboard(leaderboardData.sort((a, b) => b.total_earnings - a.total_earnings));
+        setLoading(true);
+        console.debug('[LeagueOverview] Fetching yearly leaderboard...');
+        const leaderboardData = await fetchYearlyLeaderboard();
+        setLeaderboard(leaderboardData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load profiles');
+        setError(err instanceof Error ? err.message : 'Failed to load leaderboard');
       } finally {
         setLoading(false);
       }
     }
-
-    fetchProfiles();
+    fetchLeaderboard();
   }, []);
 
   if (loading) {
@@ -123,19 +78,19 @@ export function LeagueOverview() {
                       <span className="font-medium text-gray-900">{entry.team_name}</span>
                     </div>
                     <div className="text-sm text-gray-500">
-                      Avg Finish: {entry.average_finish === 'N/A' ? 'N/A' : `${entry.average_finish}${
-                        entry.average_finish.endsWith('.0') ? '' :
-                        entry.average_finish.endsWith('.1') ? 'st' :
-                        entry.average_finish.endsWith('.2') ? 'nd' :
-                        entry.average_finish.endsWith('.3') ? 'rd' : 'th'
+                      Avg Finish: {entry.averageFinish === 'N/A' ? 'N/A' : `${entry.averageFinish}$
+                        {entry.averageFinish.endsWith('.0') ? '' :
+                        entry.averageFinish.endsWith('.1') ? 'st' :
+                        entry.averageFinish.endsWith('.2') ? 'nd' :
+                        entry.averageFinish.endsWith('.3') ? 'rd' : 'th'
                       }`}
                     </div>
                   </div>
                 </div>
                 <div className={`text-lg font-bold ${
-                  entry.total_earnings >= 0 ? 'text-green-600' : 'text-red-600'
+                  entry.totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'
                 }`}>
-                  ${entry.total_earnings >= 0 ? '+' : ''}${entry.total_earnings.toFixed(2)}
+                  ${entry.totalEarnings >= 0 ? '+' : ''}${entry.totalEarnings.toFixed(2)}
                 </div>
               </div>
             </div>

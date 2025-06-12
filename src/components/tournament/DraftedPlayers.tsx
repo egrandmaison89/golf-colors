@@ -2,6 +2,7 @@ import React from 'react';
 import { UserX } from 'lucide-react';
 import type { Player, TeamPlayer } from '../../types/tournament';
 import { PlayerCard } from './PlayerCard';
+import type { Round } from './PlayerCard';
 
 interface DraftedPlayersProps {
   players: Player[];
@@ -27,6 +28,11 @@ function getTeamColor(profile: unknown): string {
     return (profile as { team_color: string }).team_color;
   }
   return 'Blue';
+}
+
+// Type guard for Rounds
+function hasRounds(player: unknown): player is { Rounds: unknown } {
+  return typeof player === 'object' && player !== null && 'Rounds' in player;
 }
 
 export function DraftedPlayers({
@@ -122,28 +128,28 @@ export function DraftedPlayers({
                 }
               } else {
                 // fallback to old logic if thruMap is not provided
-                const today = new Date().toISOString().slice(0, 10);
-                if (hasTotalThrough(player)) {
-                  const thru = player.TotalThrough;
-                  if (thru === 0 || thru === null) {
-                    const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-                    if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    }
-                  } else if (thru >= 18) {
-                    progress = 'F';
-                  } else {
-                    progress = `${thru}`;
-                  }
-                } else {
+              const today = new Date().toISOString().slice(0, 10);
+              if (hasTotalThrough(player)) {
+                const thru = player.TotalThrough;
+                if (thru === 0 || thru === null) {
                   const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
-                  if (roundToday) {
-                    if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
-                      progress = `${roundToday.Thru}`;
-                    } else if (roundToday.Thru === 18) {
-                      progress = 'F';
-                    } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
-                      progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  if (roundToday?.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                    progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  }
+                } else if (thru >= 18) {
+                  progress = 'F';
+                } else {
+                  progress = `${thru}`;
+                }
+              } else {
+                const roundToday = player.PlayerRoundScore?.find(r => r.TeeTime && r.TeeTime.slice(0, 10) === today);
+                if (roundToday) {
+                  if (typeof roundToday.Thru === 'number' && roundToday.Thru > 0 && roundToday.Thru < 18) {
+                    progress = `${roundToday.Thru}`;
+                  } else if (roundToday.Thru === 18) {
+                    progress = 'F';
+                  } else if (roundToday.TeeTime && new Date(roundToday.TeeTime) > new Date()) {
+                    progress = new Date(roundToday.TeeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     }
                   }
                 }
@@ -206,9 +212,13 @@ export function DraftedPlayers({
                 selectedPlayerId === player.PlayerID && (
                   <tr key={`player-card-${player.PlayerID}`}> 
                     <td colSpan={5} className="p-0">
-                      <PlayerCard player={{ ...player, WorldGolfRanking: golfersMap[player.PlayerID]?.WorldGolfRank ?? player.WorldGolfRanking }} onClose={() => setSelectedPlayerId(null)} />
-                </td>
-              </tr>
+                      <PlayerCard player={{
+                        ...player,
+                        WorldGolfRanking: golfersMap[player.PlayerID]?.WorldGolfRank ?? player.WorldGolfRanking,
+                        ...(hasRounds(player) ? { Rounds: player.Rounds as Round[] } : {})
+                      }} onClose={() => setSelectedPlayerId(null)} />
+                    </td>
+                  </tr>
                 )
               ];
             })}

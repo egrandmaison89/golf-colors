@@ -20,6 +20,10 @@ import { TournamentResults } from '../components/tournament/TournamentResults';
 import { TabButton } from '../components/tournament/TabButton';
 import { getPlayerStatus, calculatePlayerScore, renderPlayerScore } from '../utils/tournament';
 import { PlayerCard } from '../components/tournament/PlayerCard';
+import { getCachedLeaderboard } from '../lib/tournament-cache';
+import golfersData from '../../public/golfers.json';
+import { loggedFetch } from '../lib/loggedFetch';
+import { cachedApiFetch } from '../lib/apiCache';
 
 // Register Chart.js components
 ChartJS.register(
@@ -127,7 +131,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   const [wasUnregistered, setWasUnregistered] = useState(false);
   const [registeredTeams, setRegisteredTeams] = useState<Array<{ team_name: string; team_color: string; }>>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
-  const [golfersMap, setGolfersMap] = useState<Record<number, { WorldGolfRank: number }>>({});
+  const [golfersMap, setGolfersMap] = useState<Record<number, { FirstName: string; LastName: string; WorldGolfRank: number }>>({});
   const [thruMap, setThruMap] = useState<Map<number, { holesCompleted: number, teeTime?: string }>>(new Map());
 
   const tournamentIdNum = tournamentId ? parseInt(tournamentId) : 0;
@@ -189,13 +193,13 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                 const holesCompleted = thruData?.holesCompleted;
                 const teeTime = thruData?.teeTime;
                 if (typeof holesCompleted === 'number' && holesCompleted > 0 && holesCompleted < 18) {
-                  progress = `${holesCompleted}`;
+                      progress = `${holesCompleted}`;
                 } else if (holesCompleted === 18) {
                   progress = 'F';
                 } else if (teeTime && new Date(teeTime) > new Date()) {
                   progress = new Date(teeTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                } else {
-                  progress = '';
+                    } else {
+                      progress = '';
                 }
                 
                 return [
@@ -451,42 +455,54 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
           // Use tournament to determine if future
           const isFutureTournament = tournament && new Date(tournament.StartDate) > new Date();
           if (isFutureTournament) {
-            const oddsResponse = await fetch(
-              `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`
+            const playersData = await cachedApiFetch(
+              `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`,
+              () => loggedFetch(
+                `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`,
+                undefined,
+                'TournamentDetail:PlayerTournamentRoundScores'
+              ).then(r => r.json()),
+              2 * 60 * 1000
             );
-            const playersData = await oddsResponse.json();
             sortedPlayers = playersData;
 
-            const oddsDataResponse = await fetch(
-              `https://api.sportsdata.io/v3/golf/odds/json/TournamentOddsLineMovement/${tournamentId}?key=${API_KEY}`
+            const oddsDataRaw: unknown = await cachedApiFetch(
+              `https://api.sportsdata.io/v3/golf/odds/json/TournamentOddsLineMovement/${tournamentId}?key=${API_KEY}`,
+              () => loggedFetch(
+                `https://api.sportsdata.io/v3/golf/odds/json/TournamentOddsLineMovement/${tournamentId}?key=${API_KEY}`,
+                undefined,
+                'TournamentDetail:TournamentOddsLineMovement'
+              ).then(r => r.json()),
+              2 * 60 * 1000
             );
-            if (oddsDataResponse.ok) {
-              const oddsData = await oddsDataResponse.json();
-
-              if (Array.isArray(oddsData)) {
-                const playerOddsMap = new Map<number, number>();
-                oddsData.forEach(entry => {
-                  if (!playerOddsMap.has(entry.PlayerID)) {
-                    playerOddsMap.set(entry.PlayerID, entry.OddsToWin);
-                  }
-                });
-
-                const processedOdds = Array.from(playerOddsMap.entries()).map(([PlayerID, OddsToWin]) => ({
-                  PlayerID,
-                  Name: playersData.find((p: Player) => p.PlayerID === PlayerID)?.FirstName + ' ' + 
-                       playersData.find((p: Player) => p.PlayerID === PlayerID)?.LastName,
-                  OddsToWin
-                }));
-                setPlayerOdds(processedOdds);
-              }
+            const oddsData = oddsDataRaw as Array<{ PlayerID: number; OddsToWin: number }>;
+            if (Array.isArray(oddsData)) {
+              const playerOddsMap = new Map<number, number>();
+              oddsData.forEach((odds) => {
+                playerOddsMap.set(odds.PlayerID, odds.OddsToWin);
+              });
+              const processedOdds = Array.from(playerOddsMap.entries()).map(([PlayerID, OddsToWin]) => ({
+                PlayerID,
+                Name: sortedPlayers.find((p: Player) => p.PlayerID === PlayerID)?.FirstName + ' ' + 
+                     sortedPlayers.find((p: Player) => p.PlayerID === PlayerID)?.LastName,
+                OddsToWin
+              }));
+              setPlayerOdds(processedOdds);
             }
           } else {
-            // Fetch main leaderboard/player data from LeaderboardBasic (not Final)
-            const leaderboardResponse = await fetch(
-              `https://api.sportsdata.io/golf/v2/json/LeaderboardBasic/${tournamentId}?key=${API_KEY}`
-            );
-            if (!leaderboardResponse.ok) throw new Error('Failed to fetch leaderboard');
-            const leaderboardData = await leaderboardResponse.json();
+            // Fetch main leaderboard/player data from getCachedLeaderboard (not direct fetch)
+            const status = (tournament && new Date(tournament.EndDate) < new Date()) ? 'completed' : 'active';
+            console.log('Before getCachedLeaderboard');
+            let leaderboardDataRaw: unknown;
+            try {
+              leaderboardDataRaw = await getCachedLeaderboard(tournamentId || tournamentIdNum, status);
+              console.log('After getCachedLeaderboard:', leaderboardDataRaw);
+            } catch (err) {
+              console.error('Error in getCachedLeaderboard:', err);
+              throw err;
+            }
+            console.log('Leaderboard API raw data:', leaderboardDataRaw);
+            const leaderboardData = leaderboardDataRaw as { Players: Player[] };
             if (!leaderboardData.Players) throw new Error('No player data in leaderboard');
             sortedPlayers = leaderboardData.Players;
             // Build a map of PlayerID to THRU (holes completed) and TeeTime using robust round selection
@@ -536,22 +552,37 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             // (do not overwrite sortedPlayers)
             // Example:
             // if (tournament && new Date(tournament.EndDate) < new Date()) {
-            //   const leaderboardFinalResponse = await fetch(
-            //     `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournamentId}?key=${API_KEY}`
-            //   );
-            //   if (leaderboardFinalResponse.ok) {
-            //     const leaderboardFinalData = await leaderboardFinalResponse.json();
-            //     // Use leaderboardFinalData for cut logic only if needed
-            //   }
+            //   const leaderboardFinalData = await getCachedLeaderboard(tournamentId, 'completed');
+            //   // Use leaderboardFinalData for cut logic only if needed
             // }
           }
         }
         // Ensure FirstName and LastName are present for each player
-        sortedPlayers = sortedPlayers.map((player: Player & { Name?: string }) => ({
-          ...player,
-          FirstName: player.FirstName || (player.Name ? player.Name.split(' ')[0] : ''),
-          LastName: player.LastName || (player.Name ? player.Name.split(' ').slice(1).join(' ') : ''),
-        }));
+        sortedPlayers = sortedPlayers.map((player: Player & { Name?: string; Rounds?: Player["PlayerRoundScore"] }) => {
+          let FirstName = player.FirstName;
+          let LastName = player.LastName;
+          if (!FirstName || !LastName) {
+            if (player.Name) {
+              const parts = player.Name.split(' ');
+              FirstName = FirstName || parts[0];
+              LastName = LastName || parts.slice(1).join(' ');
+            } else if (golfersMap[player.PlayerID]) {
+              FirstName = golfersMap[player.PlayerID].FirstName;
+              LastName = golfersMap[player.PlayerID].LastName;
+            }
+          }
+          // Ensure Rounds property exists (alias PlayerRoundScore if needed)
+          let Rounds = player.Rounds;
+          if (!Rounds && Array.isArray(player.PlayerRoundScore)) {
+            Rounds = player.PlayerRoundScore;
+          }
+          return {
+            ...player,
+            FirstName,
+            LastName,
+            Rounds,
+          };
+        });
         setPlayers(sortedPlayers);
         setThruMap(newThruMap);
 
@@ -722,15 +753,13 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
   }
 
   useEffect(() => {
-    fetch('/golfers.json')
-      .then(res => res.json())
-      .then((golfers: Array<{ PlayerID: number; WorldGolfRank: number }>) => {
-        const map: Record<number, { WorldGolfRank: number }> = {};
-        golfers.forEach((g) => {
-          map[g.PlayerID] = { WorldGolfRank: g.WorldGolfRank };
-        });
-        setGolfersMap(map);
-      });
+    setGolfersMap(() => {
+      const map: Record<number, { FirstName: string; LastName: string; WorldGolfRank: number }> = {};
+      for (const g of golfersData) {
+        map[g.PlayerID] = { FirstName: g.FirstName, LastName: g.LastName, WorldGolfRank: g.WorldGolfRank ?? 0 };
+      }
+      return map;
+    });
   }, []);
 
   if (loading) {
