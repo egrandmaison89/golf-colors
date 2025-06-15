@@ -45,11 +45,11 @@ export function TournamentResults({ teamScores, players, registeredTeams }: Tour
   const calculateWinnerBonus = (team: TeamScore) => {
     if (!tournamentWinner || !winnerTeam || team.team_name !== winnerTeam.team_name) return 0;
     
-    // Find winner's rank in team based on selection order
-    const winnerRank = team.players.findIndex(p => p.player_id === tournamentWinner.PlayerID);
+    // Find winner's pick order in team (0 = 1st pick, 1 = 2nd pick, 2 = 3rd pick)
+    const pickOrder = team.players.findIndex(p => p.player_id === tournamentWinner.PlayerID);
 
-    // Return bonus based on rank
-    return winnerRank === 0 ? 10 : winnerRank === 1 ? 20 : 30;
+    // Return bonus based on pick order: 3rd pick = $30, 2nd pick = $20, 1st pick = $10
+    return pickOrder === 0 ? 10 : pickOrder === 1 ? 20 : 30;
   };
 
   const payouts = teamScores.map(team => {

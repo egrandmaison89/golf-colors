@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Trophy, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Tournament, Player } from '../types/tournament';
-import { calculatePlayerScore } from '../utils/tournament';
+import { calculatePlayerScoreWithDraftedPlayers } from '../utils/tournament';
 import { getCachedLeaderboard } from '../lib/tournament-cache';
 import { loggedFetch } from '../lib/loggedFetch';
 
@@ -300,10 +300,13 @@ export function useMyResults(): UseMyResultsReturn {
               };
             }
 
+            // Collect all drafted player IDs for consistent withdrawn player scoring
+            const allDraftedPlayerIds = teamPlayersData.map(tp => tp.player_id);
+
             for (const tp of entry.team_players) {
               const player = playersData.find((p) => p.PlayerID === tp.player_id);
               if (player) {
-                const score = calculatePlayerScore(player, playersData, true);
+                const score = calculatePlayerScoreWithDraftedPlayers(player, playersData, allDraftedPlayerIds, true);
                 teamScore += score;
               }
             }
@@ -314,7 +317,7 @@ export function useMyResults(): UseMyResultsReturn {
               const teamEntry = tp.tournament_entries as { id?: string; profiles?: { team_name?: string } } | undefined;
               const teamName = teamEntry?.profiles?.team_name;
               if (player && typeof teamName === 'string' && typeof teamEntry?.id === 'string') {
-                const score = calculatePlayerScore(player, playersData, true);
+                const score = calculatePlayerScoreWithDraftedPlayers(player, playersData, allDraftedPlayerIds, true);
                 teamEntries.set(teamName, teamEntry.id);
                 teamScores.set(
                   teamName,
@@ -363,11 +366,10 @@ export function useMyResults(): UseMyResultsReturn {
                 const tournamentWinner = playersData
                   .sort((a, b) => (a.TotalScore || 0) - (b.TotalScore || 0))[0];
                 if (entry.team_players.some(tp => tp.player_id === tournamentWinner.PlayerID)) {
-                  const playerRank = entry.team_players
-                    .map(tp => playersData.find((p) => p.PlayerID === tp.player_id))
-                    .sort((a, b) => (a?.WorldGolfRanking || 999) - (b?.WorldGolfRanking || 999))
-                    .findIndex(p => p && p.PlayerID === tournamentWinner.PlayerID);
-                  winnerBonus = playerRank === 0 ? 10 : playerRank === 1 ? 20 : 30;
+                  // Find winner's pick order in team (0 = 1st pick, 1 = 2nd pick, 2 = 3rd pick)
+                  const pickOrder = entry.team_players.findIndex(tp => tp.player_id === tournamentWinner.PlayerID);
+                  // Winner bonus: 3rd pick = $30, 2nd pick = $20, 1st pick = $10
+                  winnerBonus = pickOrder === 0 ? 10 : pickOrder === 1 ? 20 : 30;
                 }
               } else {
                 const winner = sortedTeams[0];

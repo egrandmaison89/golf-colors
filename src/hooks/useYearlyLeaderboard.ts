@@ -15,9 +15,9 @@ export interface YearlyLeaderboardEntry {
   combinedScore: number;
 }
 
-const CACHE_KEY = 'yearly_leaderboard_cache_v3'; // Incremented version for new caching strategy
+const CACHE_KEY = 'yearly_leaderboard_cache_v6'; // Incremented version for clarified bounty logic
 const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
-const CACHE_IDS_KEY = 'yearly_leaderboard_completed_ids_v3';
+const CACHE_IDS_KEY = 'yearly_leaderboard_completed_ids_v6';
 
 export function useYearlyLeaderboard() {
   const [leaderboard, setLeaderboard] = useState<YearlyLeaderboardEntry[]>([]);
@@ -29,8 +29,11 @@ export function useYearlyLeaderboard() {
       // Fetch all tournaments
       const tournaments = await getTournaments();
       const now = new Date();
-      // Only completed tournaments
-      const completedTournaments = tournaments.filter(t => new Date(t.EndDate) < now);
+      // Only completed tournaments - add buffer to ensure tournament is fully finished
+      // Wait until the day after the tournament ends to include it in yearly standings
+      const oneDayAfterNow = new Date(now);
+      oneDayAfterNow.setDate(oneDayAfterNow.getDate() - 1); // Yesterday
+      const completedTournaments = tournaments.filter(t => new Date(t.EndDate) < oneDayAfterNow);
       const completedIds = completedTournaments.map(t => t.TournamentID).sort();
       const completedIdsStr = JSON.stringify(completedIds);
       
@@ -147,25 +150,33 @@ export function useYearlyLeaderboard() {
         
         // Calculate bounty for each team
         const bountyMap: Record<string, number> = {};
+        
+        // Initialize all teams with 0 bounty
         for (const team of teamScores) {
-          let bounty = 0;
-          if (winnerTeams.some(wt => wt.team_name === team.team_name)) {
-            // Winner bonus: +10 if winner is 1st pick, +20 if 2nd, +30 if 3rd (use lowest pick for ties)
-            const pickOrder = team.player_ids.findIndex(pid => pid === tournamentWinner?.PlayerID);
-            bounty = pickOrder === 0 ? 10 : pickOrder === 1 ? 20 : 30;
-          }
-          bountyMap[team.team_name] = bounty;
+          bountyMap[team.team_name] = 0;
         }
         
-        // The team(s) in last place pay the bounty (split if multiple)
-        const lastPlaceScore = Math.max(...teamScores.map(t => t.score));
-        const lastPlaceTeams = teamScores.filter(t => t.score === lastPlaceScore);
-        for (const team of lastPlaceTeams) {
-          // If the last place team did NOT draft the winner, they pay the bounty to the winner team(s)
-          if (!winnerTeams.some(wt => wt.team_name === team.team_name)) {
-            // Pay bounty to each winner team (split if multiple last place teams)
-            for (const wt of winnerTeams) {
-              bountyMap[team.team_name] = (bountyMap[team.team_name] || 0) - (bountyMap[wt.team_name] || 0) / lastPlaceTeams.length;
+        // Calculate bounties for teams that drafted the tournament winner
+        for (const team of teamScores) {
+          if (winnerTeams.some(wt => wt.team_name === team.team_name)) {
+            // Winner bonus: +30 if winner is 3rd pick, +20 if 2nd, +10 if 1st
+            const pickOrder = team.player_ids.findIndex(pid => pid === tournamentWinner?.PlayerID);
+            const bountyAmount = pickOrder === 0 ? 10 : pickOrder === 1 ? 20 : 30;
+            bountyMap[team.team_name] = bountyAmount;
+            
+            // Distribute the bounty payment among the lowest-ranked teams
+            // If bounty is $30, the 3 lowest teams each pay $10
+            // If bounty is $20, the 2 lowest teams each pay $10  
+            // If bounty is $10, the 1 lowest team pays $10
+            const numPayingTeams = bountyAmount / 10;
+            const sortedTeamsByWorstScore = [...teamScores].sort((a, b) => b.score - a.score);
+            
+            for (let i = 0; i < numPayingTeams && i < sortedTeamsByWorstScore.length; i++) {
+              const payingTeam = sortedTeamsByWorstScore[i];
+              // Only make teams pay if they didn't draft the winner
+              if (!winnerTeams.some(wt => wt.team_name === payingTeam.team_name)) {
+                bountyMap[payingTeam.team_name] -= 10;
+              }
             }
           }
         }
