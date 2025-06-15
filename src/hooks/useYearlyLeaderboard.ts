@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { getTournaments, getCachedLeaderboard } from '../lib/tournament-cache';
+import { getTournaments } from '../lib/tournament-cache';
 import { supabase } from '../lib/supabase';
-import { calculatePlayerScore, getPlayerStatus } from '../utils/tournament';
-import type { Tournament, Player, TeamPlayer } from '../types/tournament';
+import { calculatePlayerScore } from '../utils/tournament';
+import type { Player } from '../types/tournament';
 
 export interface YearlyLeaderboardEntry {
   team_name: string;
@@ -15,9 +15,9 @@ export interface YearlyLeaderboardEntry {
   combinedScore: number;
 }
 
-const CACHE_KEY = 'yearly_leaderboard_cache_v2';
+const CACHE_KEY = 'yearly_leaderboard_cache_v3'; // Incremented version for new caching strategy
 const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
-const CACHE_IDS_KEY = 'yearly_leaderboard_completed_ids_v2';
+const CACHE_IDS_KEY = 'yearly_leaderboard_completed_ids_v3';
 
 export function useYearlyLeaderboard() {
   const [leaderboard, setLeaderboard] = useState<YearlyLeaderboardEntry[]>([]);
@@ -33,6 +33,7 @@ export function useYearlyLeaderboard() {
       const completedTournaments = tournaments.filter(t => new Date(t.EndDate) < now);
       const completedIds = completedTournaments.map(t => t.TournamentID).sort();
       const completedIdsStr = JSON.stringify(completedIds);
+      
       // Try cache first, but only if completed tournament IDs match
       const cache = localStorage.getItem(CACHE_KEY);
       const cacheTime = localStorage.getItem(CACHE_KEY + '_time');
@@ -42,7 +43,8 @@ export function useYearlyLeaderboard() {
         setLoading(false);
         return;
       }
-      // For each tournament, fetch leaderboard and team_players
+      
+      // For each tournament, fetch leaderboard and team_players using permanent cache
       const teamResults: Record<string, {
         team_color: string;
         earnings: number;
@@ -53,55 +55,96 @@ export function useYearlyLeaderboard() {
         tournamentsPlayed: number;
         combinedScore: number;
       }> = {};
+      
       for (const tournament of completedTournaments) {
-        let leaderboardData: any;
+        let leaderboardData: { Players?: Player[] } | null = null;
+        
         try {
-          leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'completed');
-        } catch {
+          // First try permanent cache
+          const { data: permanentCache } = await supabase
+            .from('completed_tournament_cache')
+            .select('leaderboard_data')
+            .eq('tournament_id', tournament.TournamentID)
+            .single();
+          
+          if (permanentCache && permanentCache.leaderboard_data && Object.keys(permanentCache.leaderboard_data).length > 0) {
+            leaderboardData = permanentCache.leaderboard_data as { Players?: Player[] };
+            console.log(`[useYearlyLeaderboard] Using permanent cache for tournament ${tournament.TournamentID}`);
+          } else {
+            // Fallback to getCachedLeaderboard (which will populate permanent cache)
+            const { getCachedLeaderboard } = await import('../lib/tournament-cache');
+            leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'completed') as { Players?: Player[] };
+            console.log(`[useYearlyLeaderboard] Fallback to getCachedLeaderboard for tournament ${tournament.TournamentID}`);
+          }
+        } catch (error) {
+          console.warn(`[useYearlyLeaderboard] Failed to get data for tournament ${tournament.TournamentID}:`, error);
           continue;
         }
+        
+        if (!leaderboardData?.Players) {
+          console.warn(`[useYearlyLeaderboard] No player data for tournament ${tournament.TournamentID}`);
+          continue;
+        }
+        
         // Fetch team_players for this tournament
         const { data: teamPlayersData } = await supabase
           .from('team_players')
           .select('player_id, entry_id, tournament_entries!inner(profiles(team_name, team_color))')
           .eq('tournament_entries.tournament_id', tournament.TournamentID);
+        
         if (!teamPlayersData) continue;
+        
         // Build team map: team_name -> { color, player_ids }
         const teamMap: Record<string, { color: string; player_ids: number[] }> = {};
         for (const tp of teamPlayersData) {
-          const teamName = tp.tournament_entries?.profiles?.team_name || 'Unknown Team';
-          const teamColor = tp.tournament_entries?.profiles?.team_color || 'Blue';
+          // Handle both array and object forms of profiles
+          const tournamentEntry = tp.tournament_entries as { profiles?: { team_name?: string; team_color?: string } | { team_name?: string; team_color?: string }[] };
+          let teamName = 'Unknown Team';
+          let teamColor = 'Blue';
+          
+          if (tournamentEntry?.profiles) {
+            if (Array.isArray(tournamentEntry.profiles)) {
+              teamName = tournamentEntry.profiles[0]?.team_name || 'Unknown Team';
+              teamColor = tournamentEntry.profiles[0]?.team_color || 'Blue';
+            } else {
+              teamName = tournamentEntry.profiles.team_name || 'Unknown Team';
+              teamColor = tournamentEntry.profiles.team_color || 'Blue';
+            }
+          }
+          
           if (!teamMap[teamName]) teamMap[teamName] = { color: teamColor, player_ids: [] };
           teamMap[teamName].player_ids.push(tp.player_id);
         }
+        
         // Calculate team scores using calculatePlayerScore (with cut logic)
         const players: Player[] = leaderboardData.Players || [];
         const teamScores: { team_name: string; team_color: string; score: number; player_ids: number[] }[] = [];
         for (const [teamName, { color, player_ids }] of Object.entries(teamMap)) {
           let score = 0;
           for (const pid of player_ids) {
-            const player = players.find((p: any) => p.PlayerID === pid);
+            const player = players.find((p: Player) => p.PlayerID === pid);
             if (player) score += calculatePlayerScore(player, players, true);
           }
           teamScores.push({ team_name: teamName, team_color: color, score, player_ids });
         }
+        
         // Sort teams by score (lower is better)
         teamScores.sort((a, b) => a.score - b.score);
         // Assign places
         const places = teamScores.map((t, i) => ({ ...t, place: i + 1 }));
+        
         // Find winner(s)
         const minScore = Math.min(...teamScores.map(t => t.score));
         const winners = teamScores.filter(t => t.score === minScore);
         // Wins: fractional for ties
         const winValue = 1 / winners.length;
+        
         // Calculate earnings, bounties, etc.
-        // 1. Earnings: winner(s) get sum of strokes ahead of all other teams; losers: negative earnings (strokes behind winner)
-        // 2. Bounties: winner(s) get bounty (e.g., +10, +20, +30) based on who picked the tournament winner; losers pay bounty
-        // 3. Combined Score: sum of calculated team scores
         // Find tournament winner (lowest individual TotalScore)
         const tournamentWinner = [...players].sort((a, b) => (a.TotalScore ?? 9999) - (b.TotalScore ?? 9999))[0];
         // Find which team(s) drafted the tournament winner
         const winnerTeams = teamScores.filter(team => team.player_ids.includes(tournamentWinner?.PlayerID));
+        
         // Calculate bounty for each team
         const bountyMap: Record<string, number> = {};
         for (const team of teamScores) {
@@ -113,6 +156,7 @@ export function useYearlyLeaderboard() {
           }
           bountyMap[team.team_name] = bounty;
         }
+        
         // The team(s) in last place pay the bounty (split if multiple)
         const lastPlaceScore = Math.max(...teamScores.map(t => t.score));
         const lastPlaceTeams = teamScores.filter(t => t.score === lastPlaceScore);
@@ -125,6 +169,7 @@ export function useYearlyLeaderboard() {
             }
           }
         }
+        
         // Aggregate results
         for (const t of places) {
           if (!teamResults[t.team_name]) {
@@ -143,10 +188,12 @@ export function useYearlyLeaderboard() {
           teamResults[t.team_name].finishes.push(t.place);
           teamResults[t.team_name].scores.push(t.score);
           teamResults[t.team_name].combinedScore += t.score;
+          
           // Wins: fractional for ties
           if (t.score === minScore) {
             teamResults[t.team_name].wins += winValue;
           }
+          
           // Earnings: winner(s) get sum of strokes ahead of all other teams; losers: negative earnings (strokes behind winner)
           if (t.score === minScore) {
             // Calculate the total pot (sum of strokes ahead of all other teams)
@@ -159,10 +206,12 @@ export function useYearlyLeaderboard() {
           } else {
             teamResults[t.team_name].earnings -= (t.score - minScore);
           }
+          
           // Bounties: net (won minus lost)
           teamResults[t.team_name].bounties += bountyMap[t.team_name] || 0;
         }
       }
+      
       // Aggregate leaderboard
       const leaderboardArr: YearlyLeaderboardEntry[] = Object.entries(teamResults).map(([team_name, data]) => ({
         team_name,
@@ -174,8 +223,10 @@ export function useYearlyLeaderboard() {
         averageFinish: data.finishes.length > 0 ? (data.finishes.reduce((a, b) => a + b, 0) / data.finishes.length).toFixed(1) : 'N/A',
         combinedScore: data.combinedScore,
       }));
+      
       leaderboardArr.sort((a, b) => b.totalEarnings - a.totalEarnings);
       setLeaderboard(leaderboardArr);
+      
       localStorage.setItem(CACHE_KEY, JSON.stringify(leaderboardArr));
       localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
       localStorage.setItem(CACHE_IDS_KEY, completedIdsStr);

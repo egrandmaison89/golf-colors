@@ -16,63 +16,60 @@ interface LeaderboardEntry {
 }
 
 export function Home() {
+  const [currentTournament, setCurrentTournament] = useState<Tournament | null>(null);
   const [recentTournament, setRecentTournament] = useState<Tournament | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [teamStandings, setTeamStandings] = useState<Array<{ team_name: string; total_score: number; team_color: string }>>([]);
+  const [recentWinners, setRecentWinners] = useState<{ team_names: string[]; tournament_name: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentTournament, setCurrentTournament] = useState<Tournament | null>(null);
-  const [mostRecentCompleted, setMostRecentCompleted] = useState<Tournament | null>(null);
-  const [recentWinners, setRecentWinners] = useState<{ team_names: string[], tournament_name: string } | null>(null);
   const [golfersMap, setGolfersMap] = useState<Record<number, { FirstName: string; LastName: string }>>({});
-  const [teamStandings, setTeamStandings] = useState<Array<{ team_name: string; team_color: string; total_score: number }>>([]);
   const [userTeamName, setUserTeamName] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchTournaments() {
       try {
+        const tournaments2025 = await getTournaments();
+        
         const now = new Date();
         now.setHours(0, 0, 0, 0);
-
-        const tournaments = await getTournaments();
         
-        // Sort tournaments by date
-        const sortedTournaments = tournaments.sort((a: Tournament, b: Tournament) => 
-          new Date(a.StartDate).getTime() - new Date(b.StartDate).getTime()
-        );
-
-        // Find the current tournament
-        const activeTournament = sortedTournaments.find(t => {
+        // Find current tournament (active or most recent upcoming)
+        let tournamentToShow: Tournament | null = null;
+        
+        // First, look for active tournaments
+        const activeTournaments = tournaments2025.filter(t => {
           const startDate = new Date(t.StartDate);
           const endDate = new Date(t.EndDate);
           return startDate <= now && endDate >= now;
         });
-        setCurrentTournament(activeTournament || null);
         
-        // Find the most recently completed tournament
-        const completedTournaments = sortedTournaments.filter(t => {
-          const endDate = new Date(t.EndDate);
-          return endDate < now;
-        });
-        const recentCompleted = completedTournaments[completedTournaments.length - 1];
-        setMostRecentCompleted(recentCompleted || null);
-
-        // Determine which tournament to show based on timing
-        let tournamentToShow;
-        if (activeTournament) {
-          // If there's an active tournament, show it
-          tournamentToShow = activeTournament;
+        if (activeTournaments.length > 0) {
+          tournamentToShow = activeTournaments[0];
         } else {
-          // Find next tournament
-          const nextTournament = sortedTournaments.find(t => {
-            const startDate = new Date(t.StartDate);
-            return startDate > now;
-          });
+          // If no active tournaments, find the next upcoming one
+          const upcomingTournaments = tournaments2025
+            .filter(t => new Date(t.StartDate) > now)
+            .sort((a, b) => new Date(a.StartDate).getTime() - new Date(b.StartDate).getTime());
           
-          tournamentToShow = nextTournament || recentCompleted;
+          if (upcomingTournaments.length > 0) {
+            tournamentToShow = upcomingTournaments[0];
+          } else {
+            // If no upcoming tournaments, show the most recent completed one
+            const completedTournaments = tournaments2025
+              .filter(t => new Date(t.EndDate) < now)
+              .sort((a, b) => new Date(b.EndDate).getTime() - new Date(a.EndDate).getTime());
+            
+            if (completedTournaments.length > 0) {
+              tournamentToShow = completedTournaments[0];
+            }
+          }
         }
+        
+        setCurrentTournament(tournamentToShow);
 
         if (tournamentToShow) {
           setRecentTournament(tournamentToShow);
-          const resultsData = await getTournamentResults(tournamentToShow.TournamentID);
+          const resultsData = await getTournamentResults(tournamentToShow.TournamentID) as Player[];
           
           // Fetch team data for the tournament
           const { data: teamPlayersData } = await supabase
@@ -94,7 +91,7 @@ export function Home() {
             const validTeams = new Set<string>();
             
             (teamPlayersData as Array<{ player_id: number; tournament_entries?: { profiles?: { team_name?: string }[] } }>).forEach(tp => {
-              const player = resultsData.find((p: unknown) => typeof p === 'object' && p !== null && 'PlayerID' in p && (p as Player).PlayerID === tp.player_id) as Player | undefined;
+              const player = resultsData.find((p: Player) => p.PlayerID === tp.player_id);
               let teamName: string | undefined;
               if (tp.tournament_entries && tp.tournament_entries.profiles) {
                 if (Array.isArray(tp.tournament_entries.profiles)) {
@@ -169,65 +166,65 @@ export function Home() {
             
             setLeaderboard(processedLeaderboard);
           }
-
-          // If we have a completed tournament that ended less than 7 days ago,
-          // show its winner in the congratulations section
-          if (mostRecentCompleted) {
-            const endDate = new Date(mostRecentCompleted.EndDate);
-            const sevenDaysAfterEnd = new Date(endDate);
-            sevenDaysAfterEnd.setDate(sevenDaysAfterEnd.getDate() + 7);
+          
+          // Fetch completed tournament data for recent winners
+          const completedTournaments = tournaments2025.filter(t => new Date(t.EndDate) < now);
+          if (completedTournaments.length > 0) {
+            const mostRecentCompleted = completedTournaments
+              .sort((a, b) => new Date(b.EndDate).getTime() - new Date(a.EndDate).getTime())[0];
             
-            if (now < sevenDaysAfterEnd) {
-              const completedResultsData = await getTournamentResults(mostRecentCompleted.TournamentID);
-              const { data: completedTeamPlayers } = await supabase
-                .from('team_players')
-                .select(`
-                  player_id,
-                  tournament_entries!inner(
-                    tournament_id,
-                    profiles(team_name)
+            const { data: completedTeamPlayers } = await supabase
+              .from('team_players')
+              .select(`
+                player_id, 
+                tournament_entries!inner (
+                  tournament_id,
+                  profiles!inner (
+                    team_name
                   )
-                `)
-                .eq('tournament_entries.tournament_id', mostRecentCompleted.TournamentID);
+                )
+              `)
+              .eq('tournament_entries.tournament_id', mostRecentCompleted.TournamentID);
 
-              if (completedTeamPlayers && completedResultsData) {
-                // Calculate winning team for completed tournament
-                const teamScores = new Map<string, number>();
-                
-                (completedTeamPlayers as Array<{ player_id: number; tournament_entries?: { profiles?: { team_name?: string }[] } }>).forEach(tp => {
-                  const player = completedResultsData.find((p: unknown) => typeof p === 'object' && p !== null && 'PlayerID' in p && (p as Player).PlayerID === tp.player_id) as Player | undefined;
-                  let teamName: string | undefined;
-                  if (tp.tournament_entries && tp.tournament_entries.profiles) {
-                    if (Array.isArray(tp.tournament_entries.profiles)) {
-                      teamName = tp.tournament_entries.profiles[0]?.team_name;
-                    } else {
-                      teamName = (tp.tournament_entries.profiles as { team_name?: string })?.team_name;
-                    }
-                  }
-                  if (player && teamName) {
-                    const safePlayer: Player = {
-                      PlayerID: player.PlayerID,
-                      FirstName: player.FirstName ?? '',
-                      LastName: player.LastName ?? '',
-                      TotalScore: player.TotalScore ?? 0,
-                      IsWithdrawn: player.IsWithdrawn ?? false,
-                      TotalStrokes: player.TotalStrokes ?? 0,
-                      Par: player.Par ?? 0,
-                      PlayerRoundScore: player.PlayerRoundScore ?? [],
-                    };
-                    const score = getPlayerStatus(player) === 'cut'
-                      ? calculatePlayerScore(safePlayer, completedResultsData, true)
-                      : player.TotalScore ?? 0;
-                    teamScores.set(
-                      teamName,
-                      (teamScores.get(teamName) || 0) + score
-                    );
-                  }
-                });
+            const completedResultsData = await getTournamentResults(mostRecentCompleted.TournamentID) as Player[];
 
-                if (teamScores.size > 0) {
-                  // Removed setWinningTeam as it is unused
+            if (completedTeamPlayers && completedResultsData) {
+              // Calculate winning team for completed tournament
+              const teamScores = new Map<string, number>();
+              
+              (completedTeamPlayers as Array<{ player_id: number; tournament_entries?: { profiles?: { team_name?: string }[] } }>).forEach(tp => {
+                const player = completedResultsData.find((p: Player) => p.PlayerID === tp.player_id);
+                let teamName: string | undefined;
+                if (tp.tournament_entries && tp.tournament_entries.profiles) {
+                  if (Array.isArray(tp.tournament_entries.profiles)) {
+                    teamName = tp.tournament_entries.profiles[0]?.team_name;
+                  } else {
+                    teamName = (tp.tournament_entries.profiles as { team_name?: string })?.team_name;
+                  }
                 }
+                if (player && teamName) {
+                  const safePlayer: Player = {
+                    PlayerID: player.PlayerID,
+                    FirstName: player.FirstName ?? '',
+                    LastName: player.LastName ?? '',
+                    TotalScore: player.TotalScore ?? 0,
+                    IsWithdrawn: player.IsWithdrawn ?? false,
+                    TotalStrokes: player.TotalStrokes ?? 0,
+                    Par: player.Par ?? 0,
+                    PlayerRoundScore: player.PlayerRoundScore ?? [],
+                  };
+                  const score = getPlayerStatus(player) === 'cut'
+                    ? calculatePlayerScore(safePlayer, completedResultsData, true)
+                    : player.TotalScore ?? 0;
+                  teamScores.set(
+                    teamName,
+                    (teamScores.get(teamName) || 0) + score
+                  );
+                }
+              });
+
+              if (teamScores.size > 0) {
+                // Removed setWinningTeam as it is unused
               }
             }
           }
@@ -324,7 +321,7 @@ export function Home() {
         players = leaderboardData && leaderboardData.Players ? leaderboardData.Players : [];
       } else {
         // For active tournaments, fallback to getTournamentResults
-        players = await getTournamentResults(currentTournament.TournamentID);
+        players = await getTournamentResults(currentTournament.TournamentID) as Player[];
       }
       const { data: teamPlayersData } = await supabase
         .from('team_players')

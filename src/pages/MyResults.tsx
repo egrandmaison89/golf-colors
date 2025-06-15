@@ -228,12 +228,29 @@ export function useMyResults(): UseMyResultsReturn {
               const leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'active') as { Players?: Player[] };
               playersData = leaderboardData.Players || [];
             } else if (status === 'completed') {
-              let leaderboardData: { Players?: Player[] };
+              let leaderboardData: { Players?: Player[] } | null = null;
+              
               try {
-                leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'completed') as { Players?: Player[] };
-                playersData = leaderboardData.Players || [];
-              } catch {
-                // fallback
+                // First try permanent cache for completed tournaments
+                const { data: permanentCache } = await supabase
+                  .from('completed_tournament_cache')
+                  .select('leaderboard_data')
+                  .eq('tournament_id', tournament.TournamentID)
+                  .single();
+                
+                if (permanentCache && permanentCache.leaderboard_data && Object.keys(permanentCache.leaderboard_data).length > 0) {
+                  leaderboardData = permanentCache.leaderboard_data as { Players?: Player[] };
+                  console.log(`[MyResults] Using permanent cache for completed tournament ${tournament.TournamentID}`);
+                } else {
+                  // Fallback to getCachedLeaderboard (which will populate permanent cache)
+                  leaderboardData = await getCachedLeaderboard(tournament.TournamentID, 'completed') as { Players?: Player[] };
+                  console.log(`[MyResults] Fallback to getCachedLeaderboard for tournament ${tournament.TournamentID}`);
+                }
+                
+                playersData = leaderboardData?.Players || [];
+              } catch (error) {
+                console.warn(`[MyResults] Failed to get completed tournament data for ${tournament.TournamentID}:`, error);
+                // Final fallback to API call
                 const scoresResponse = await loggedFetch(
                   `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournament.TournamentID}?key=${API_KEY}`,
                   undefined,

@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { Player, TeamPlayer, TeamScore } from '../types/tournament';
-import { getPlayerStatus, calculatePlayerScore } from './tournament';
+import { getPlayerStatus, calculatePlayerScoreWithDraftedPlayers } from './tournament';
 
 export interface YearlyLeaderboardEntry {
   team_name: string;
@@ -63,6 +63,9 @@ export async function fetchYearlyLeaderboard(): Promise<YearlyLeaderboardEntry[]
 
 export function calculateTeamScores(players: Player[], teamPlayers: TeamPlayer[]): TeamScore[] {
   const teamScoresMap = new Map<string, TeamScore>();
+  
+  // Get all drafted player IDs
+  const draftedPlayerIds = teamPlayers.map(tp => tp.player_id);
 
   teamPlayers.forEach(tp => {
     const player = players.find(p => p.PlayerID === tp.player_id);
@@ -70,7 +73,7 @@ export function calculateTeamScores(players: Player[], teamPlayers: TeamPlayer[]
 
     const teamName = tp.profile.team_name;
     const status = getPlayerStatus(player);
-    const playerScore = calculatePlayerScore(player, players, true);
+    const playerScore = calculatePlayerScoreWithDraftedPlayers(player, players, draftedPlayerIds, true);
 
     if (!teamScoresMap.has(teamName)) {
       teamScoresMap.set(teamName, {

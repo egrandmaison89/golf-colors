@@ -18,12 +18,13 @@ import { DraftedPlayers } from '../components/tournament/DraftedPlayers';
 import { TeamScores } from '../components/tournament/TeamScores';
 import { TournamentResults } from '../components/tournament/TournamentResults';
 import { TabButton } from '../components/tournament/TabButton';
-import { getPlayerStatus, calculatePlayerScore, renderPlayerScore } from '../utils/tournament';
+import { getPlayerStatus, calculatePlayerScore, renderPlayerScore, calculatePlayerScoreWithDraftedPlayers } from '../utils/tournament';
 import { PlayerCard } from '../components/tournament/PlayerCard';
 import { getCachedLeaderboard } from '../lib/tournament-cache';
 import golfersData from '../../public/golfers.json';
 import { loggedFetch } from '../lib/loggedFetch';
 import { cachedApiFetch } from '../lib/apiCache';
+import { calculateTeamScores } from '../utils/leaderboard';
 
 // Register Chart.js components
 ChartJS.register(
@@ -181,7 +182,10 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             <tbody className="bg-white divide-y divide-gray-200">
               {players.map((player) => {
                 const status = getPlayerStatus(player);
-                const score = calculatePlayerScore(player, players, true);
+                const draftedPlayerIds = teamPlayers.map(tp => tp.player_id);
+                const score = draftedPlayerIds.includes(player.PlayerID) 
+                  ? calculatePlayerScoreWithDraftedPlayers(player, players, draftedPlayerIds, true)
+                  : calculatePlayerScore(player, players, false);
                 const isPlayerSelected = selectedPlayers.includes(player.PlayerID);
                 const isPlayerTaken = teamPlayers.some(tp => 
                   tp.player_id === player.PlayerID && !selectedPlayers.includes(player.PlayerID)
@@ -284,52 +288,6 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
         </div>
       </div>
     );
-  };
-
-  const calculateTeamScores = (players: Player[], teamPlayers: TeamPlayer[]): TeamScore[] => {
-    const teamScoresMap = new Map<string, TeamScore>();
-
-    // First, process active players
-    teamPlayers.forEach(tp => {
-      const player = players.find(p => p.PlayerID === tp.player_id);
-      if (!player) return;
-
-      const teamName = tp.profile.team_name;
-      const status = getPlayerStatus(player);
-      const playerScore = calculatePlayerScore(player, players, true);
-
-      if (!teamScoresMap.has(teamName)) {
-        teamScoresMap.set(teamName, {
-          team_name: teamName,
-          total_score: 0,
-          players: []
-        });
-      }
-
-      const teamScore = teamScoresMap.get(teamName)!;
-      teamScore.total_score += playerScore;
-      teamScore.players.push({
-        player_id: player.PlayerID,
-        score: playerScore,
-        firstName: player.FirstName,
-        lastName: player.LastName,
-        status: status
-      });
-    });
-
-    // Sort players within each team
-    teamScoresMap.forEach(team => {
-      team.players.sort((a, b) => {
-        // Active players first
-        if (a.status === 'active' && b.status !== 'active') return -1;
-        if (a.status !== 'active' && b.status === 'active') return 1;
-        // Then sort by score
-        return a.score - b.score;
-      });
-    });
-
-    return Array.from(teamScoresMap.values())
-      .sort((a, b) => a.total_score - b.total_score);
   };
 
   // Set up realtime subscription for team players
@@ -462,7 +420,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                 undefined,
                 'TournamentDetail:PlayerTournamentRoundScores'
               ).then(r => r.json()),
-              2 * 60 * 1000
+              30 * 60 * 1000
             );
             sortedPlayers = playersData;
 
@@ -473,7 +431,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
                 undefined,
                 'TournamentDetail:TournamentOddsLineMovement'
               ).then(r => r.json()),
-              2 * 60 * 1000
+              30 * 60 * 1000
             );
             const oddsData = oddsDataRaw as Array<{ PlayerID: number; OddsToWin: number }>;
             if (Array.isArray(oddsData)) {
@@ -490,7 +448,7 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               setPlayerOdds(processedOdds);
             }
           } else {
-            // Fetch main leaderboard/player data from getCachedLeaderboard (not direct fetch)
+            // For active/completed tournaments, fetch both leaderboard and detailed round data
             const status = (tournament && new Date(tournament.EndDate) < new Date()) ? 'completed' : 'active';
             console.log('Before getCachedLeaderboard');
             let leaderboardDataRaw: unknown;
@@ -502,59 +460,129 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               throw err;
             }
             console.log('Leaderboard API raw data:', leaderboardDataRaw);
+            console.log('Leaderboard data structure:', JSON.stringify(leaderboardDataRaw, null, 2));
             const leaderboardData = leaderboardDataRaw as { Players: Player[] };
             if (!leaderboardData.Players) throw new Error('No player data in leaderboard');
-            sortedPlayers = leaderboardData.Players;
-            // Build a map of PlayerID to THRU (holes completed) and TeeTime using robust round selection
-            if (
-              leaderboardData &&
-              typeof leaderboardData === 'object' &&
-              leaderboardData !== null &&
-              'Players' in leaderboardData &&
-              Array.isArray((leaderboardData as { Players: unknown[] }).Players)
-            ) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ((leaderboardData as { Players: any[] }).Players).forEach((player: any) => {
-                const now = new Date();
-                let currentRound = null;
-                if (Array.isArray(player.Rounds)) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  currentRound = player.Rounds.find((r: any) => r.Day && r.Day.slice(0, 10) === now.toISOString().slice(0, 10));
-                  if (!currentRound) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    currentRound = [...player.Rounds].reverse().find((r: any) => Array.isArray(r.Holes) && r.Holes.some((h: any) => h.Score !== null));
-                  }
-                }
-                let holesCompleted = 0;
-                let teeTime: string | undefined = undefined;
-                if (currentRound && Array.isArray(currentRound.Holes)) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  holesCompleted = currentRound.Holes.filter((h: any) => h.Score !== null).length;
-                  teeTime = currentRound.TeeTime;
-                } else if (Array.isArray(player.Rounds)) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const nextRound = player.Rounds.find((r: any) => r.TeeTime && new Date(r.TeeTime) > now);
-                  if (nextRound) teeTime = nextRound.TeeTime;
-                }
-                // Debug output
-                console.debug('LEADERBOARD THRU DEBUG', {
-                  playerId: player.PlayerID,
-                  playerName: player.Name,
-                  currentRound,
-                  holesCompleted,
-                  teeTime,
-                  allRounds: player.Rounds,
-                });
-                newThruMap.set(player.PlayerID, { holesCompleted, teeTime });
-              });
+            
+            // For active tournaments, also fetch detailed round data to ensure scorecard data is available
+            let detailedPlayersData: Player[] = [];
+            if (status === 'active') {
+              try {
+                const detailedData = await cachedApiFetch(
+                  `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`,
+                  () => loggedFetch(
+                    `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${tournamentId}?key=${API_KEY}`,
+                    undefined,
+                    'TournamentDetail:PlayerTournamentRoundScores'
+                  ).then(r => r.json()),
+                  30 * 60 * 1000 // 30 minutes TTL
+                );
+                detailedPlayersData = detailedData as Player[];
+                console.log('Detailed round data fetched for active tournament');
+                console.log('Detailed round data structure:', JSON.stringify(detailedData, null, 2));
+              } catch (err) {
+                console.warn('Failed to fetch detailed round data, using leaderboard data only:', err);
+                detailedPlayersData = leaderboardData.Players;
+              }
+            } else {
+              // For completed tournaments, leaderboard data should be sufficient
+              detailedPlayersData = leaderboardData.Players;
             }
-            // Optionally, fetch LeaderboardBasicFinal for cut logic if tournament is over
-            // (do not overwrite sortedPlayers)
-            // Example:
-            // if (tournament && new Date(tournament.EndDate) < new Date()) {
-            //   const leaderboardFinalData = await getCachedLeaderboard(tournamentId, 'completed');
-            //   // Use leaderboardFinalData for cut logic only if needed
-            // }
+            
+            // Merge leaderboard data (for THRU) with detailed round data (for scorecards)
+            const mergedPlayers = detailedPlayersData.map(detailedPlayer => {
+              const leaderboardPlayer = leaderboardData.Players.find(p => p.PlayerID === detailedPlayer.PlayerID);
+              return {
+                ...detailedPlayer,
+                // Preserve any leaderboard-specific data while keeping detailed round data
+                ...(leaderboardPlayer ? {
+                  TotalScore: leaderboardPlayer.TotalScore,
+                  TotalStrokes: leaderboardPlayer.TotalStrokes,
+                  MadeCut: leaderboardPlayer.MadeCut,
+                  IsWithdrawn: leaderboardPlayer.IsWithdrawn
+                } : {})
+              };
+            });
+            
+            sortedPlayers = mergedPlayers;
+            
+            // Build a map of PlayerID to THRU (holes completed) and TeeTime
+            // Check both leaderboard data and detailed round data for comprehensive THRU info
+            mergedPlayers.forEach((player: any) => {
+              let holesCompleted = 0;
+              let teeTime: string | undefined = undefined;
+              
+              // Method 1: Check leaderboard data for THRU (LeaderboardBasic format)
+              const leaderboardPlayer = leaderboardData.Players.find((p: any) => p.PlayerID === player.PlayerID);
+              if (leaderboardPlayer) {
+                if (typeof leaderboardPlayer.TotalThrough === 'number') {
+                  holesCompleted = leaderboardPlayer.TotalThrough;
+                } else if (typeof leaderboardPlayer.Thru === 'number') {
+                  holesCompleted = leaderboardPlayer.Thru;
+                } else if (typeof leaderboardPlayer.THRU === 'number') {
+                  holesCompleted = leaderboardPlayer.THRU;
+                } else if (typeof leaderboardPlayer.HolesCompleted === 'number') {
+                  holesCompleted = leaderboardPlayer.HolesCompleted;
+                }
+                
+                // Check for TeeTime in leaderboard data
+                if (leaderboardPlayer.TeeTime) {
+                  teeTime = leaderboardPlayer.TeeTime;
+                } else if (leaderboardPlayer.teeTime) {
+                  teeTime = leaderboardPlayer.teeTime;
+                }
+              }
+              
+              // Method 2: Extract from detailed rounds data (PlayerTournamentRoundScores format)
+              // This is especially important for completed rounds and scorecard data
+              if (Array.isArray(player.Rounds) || Array.isArray(player.PlayerRoundScore)) {
+                const rounds = player.Rounds || player.PlayerRoundScore || [];
+                const now = new Date();
+                let currentRound: unknown = null;
+                
+                // Find current round by date
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                currentRound = rounds.find((r: any) => r.Day && r.Day.slice(0, 10) === now.toISOString().slice(0, 10));
+                if (!currentRound) {
+                  // Find most recent round with scores
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  currentRound = [...rounds].reverse().find((r: any) => Array.isArray(r.Holes) && r.Holes.some((h: any) => h.Score !== null));
+                }
+                
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                if (currentRound && Array.isArray((currentRound as any).Holes)) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const roundHolesCompleted = (currentRound as any).Holes.filter((h: any) => h.Score !== null).length;
+                  // Use detailed round data if we don't have leaderboard THRU data or if it's more complete
+                  if (holesCompleted === 0 || roundHolesCompleted > holesCompleted) {
+                    holesCompleted = roundHolesCompleted;
+                  }
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  if (!teeTime && (currentRound as any).TeeTime) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    teeTime = (currentRound as any).TeeTime;
+                  }
+                } else if (rounds.length > 0) {
+                  // Check for upcoming tee time
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const nextRound = rounds.find((r: any) => r.TeeTime && new Date(r.TeeTime) > now);
+                  if (nextRound && !teeTime) teeTime = nextRound.TeeTime;
+                }
+              }
+              
+              // Debug output
+              console.debug('THRU DEBUG', {
+                playerId: player.PlayerID,
+                playerName: player.Name || `${player.FirstName} ${player.LastName}`,
+                leaderboardThru: leaderboardPlayer?.TotalThrough,
+                calculatedHoles: holesCompleted,
+                teeTime,
+                hasRounds: !!(player.Rounds || player.PlayerRoundScore),
+                playerObject: player,
+              });
+              
+              newThruMap.set(player.PlayerID, { holesCompleted, teeTime });
+            });
           }
         }
         // Ensure FirstName and LastName are present for each player
@@ -601,15 +629,6 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
             }
           }));
           
-          if (user?.id) {
-            const userTeamPlayers = formattedTeamPlayers.filter(tp => 
-              entries[tournamentIdNum]?.some(e => 
-                e.user_id === user.id && e.id === tp.entry_id
-              )
-            );
-            setSelectedPlayers(userTeamPlayers.map(tp => tp.player_id));
-          }
-          
           setTeamPlayers(formattedTeamPlayers);
           setTeamScores(calculateTeamScores(sortedPlayers, formattedTeamPlayers));
         }
@@ -621,13 +640,25 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
     }
 
     fetchTournamentDetails();
-  }, [tournamentId, user, entries, tournament]);
+  }, [tournamentId, user, tournament]);
 
   useEffect(() => {
     if (tournament) {
       setIsFutureTournament(new Date(tournament.StartDate) > new Date());
     }
   }, [tournament]);
+
+  // Handle selected players when entries change
+  useEffect(() => {
+    if (user?.id && entries[tournamentIdNum] && teamPlayers.length > 0) {
+      const userTeamPlayers = teamPlayers.filter(tp => 
+        entries[tournamentIdNum]?.some(e => 
+          e.user_id === user.id && e.id === tp.entry_id
+        )
+      );
+      setSelectedPlayers(userTeamPlayers.map(tp => tp.player_id));
+    }
+  }, [entries, user, tournamentIdNum, teamPlayers]);
 
   async function handlePlayerSelection(playerId: number) {
     if (!user) return;
@@ -867,7 +898,10 @@ export function TournamentDetail({ tournamentId: propId }: TournamentDetailProps
               players={players}
               teamPlayers={teamPlayers}
               getPlayerStatus={getPlayerStatus}
-              calculatePlayerScore={(player, allPlayers) => calculatePlayerScore(player, allPlayers, true)}
+              calculatePlayerScore={(player, allPlayers) => {
+                const draftedPlayerIds = teamPlayers.map(tp => tp.player_id);
+                return calculatePlayerScoreWithDraftedPlayers(player, allPlayers, draftedPlayerIds, true);
+              }}
               renderPlayerScore={(player, score, status) => renderPlayerScore(player, score, status, true)}
               selectedPlayerId={selectedPlayerId}
               setSelectedPlayerId={setSelectedPlayerId}

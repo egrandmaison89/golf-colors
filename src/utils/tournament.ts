@@ -100,6 +100,67 @@ export function calculatePlayerScore(player: Player, allPlayers: Player[], isDra
   }
 }
 
+// New shared function that considers only drafted players for withdrawn scoring
+export function calculatePlayerScoreWithDraftedPlayers(
+  player: Player, 
+  allPlayers: Player[], 
+  draftedPlayerIds: number[], 
+  isDraftedTab = false
+): number {
+  const status = getPlayerStatus(player);
+
+  // Use correct cut logic: sum first 2 rounds' Score and Par
+  const calculateCutScore = (player: Player): number => {
+    if ('MadeCut' in player && player.MadeCut === 0 && !player.IsWithdrawn) {
+      // Prefer Rounds if present, fallback to PlayerRoundScore
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rounds: any[] = (('Rounds' in player && Array.isArray((player as any).Rounds)) ? (player as any).Rounds : player.PlayerRoundScore || []).slice(0, 2);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sumPar = rounds.reduce((sum: number, r: any) => sum + (r.Par || 0), 0);
+      const totalStrokes = player.TotalStrokes || 0;
+      const cutScore = totalStrokes - sumPar;
+      if (isDraftedTab) {
+        // Drafted/Team/Results tabs: (TotalStrokes - sumPar) * 2
+        return cutScore * 2;
+      } else {
+        // Tournament Leaderboard: TotalStrokes - sumPar
+        return cutScore;
+      }
+    }
+    // fallback: old logic
+    const rounds = player.PlayerRoundScore?.filter(round => round.Score > 0 && round.Par > 0) || [];
+    if (rounds.length === 0) return 0;
+    const totalPar = rounds.reduce((sum, round) => sum + round.Par, 0);
+    const totalStrokes = rounds.reduce((sum, round) => sum + round.Score, 0);
+    const scoreRelativeToPar = totalStrokes - totalPar;
+    return isDraftedTab ? scoreRelativeToPar * 2 : scoreRelativeToPar;
+  };
+
+  const getHighestDraftedScore = (): number => {
+    // Only consider players who are drafted
+    const draftedPlayers = allPlayers.filter(p => draftedPlayerIds.includes(p.PlayerID));
+    const draftedScores = draftedPlayers
+      .map(p => {
+        const status = getPlayerStatus(p);
+        if (status === 'withdrawn') return null;
+        return status === 'active' ? p.TotalScore || 0 : calculateCutScore(p);
+      })
+      .filter((score): score is number => score !== null);
+    return Math.max(...draftedScores, 0);
+  };
+
+  switch (status) {
+    case 'active':
+      return player.TotalScore || 0;
+    case 'cut':
+      return calculateCutScore(player);
+    case 'withdrawn':
+      return getHighestDraftedScore() + 1;
+    default:
+      return 0;
+  }
+}
+
 export function renderPlayerScore(
   player: Player,
   score: number,

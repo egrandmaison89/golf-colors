@@ -5,6 +5,10 @@ import { cachedApiFetch } from './apiCache';
 
 const API_KEY = import.meta.env.VITE_SPORTSDATA_API_KEY;
 
+// Increased TTL for active tournaments from 2 minutes to 30 minutes
+const ACTIVE_TOURNAMENT_TTL = 30 * 60 * 1000; // 30 minutes
+const COMPLETED_TOURNAMENT_TTL = 60 * 60 * 1000; // 1 hour (for in-memory cache)
+
 export async function getTournamentData(tournamentId: number | string): Promise<unknown> {
   const numericId = typeof tournamentId === 'string' ? parseInt(tournamentId) : tournamentId;
   
@@ -42,7 +46,7 @@ export async function getTournamentData(tournamentId: number | string): Promise<
   return tournament;
 }
 
-export async function getTournamentResults(tournamentId: number | string): Promise<any> {
+export async function getTournamentResults(tournamentId: number | string): Promise<unknown> {
   const numericId = typeof tournamentId === 'string' ? parseInt(tournamentId) : tournamentId;
   
   // Check if tournament is completed
@@ -56,8 +60,20 @@ export async function getTournamentResults(tournamentId: number | string): Promi
     const endDate = new Date(tournament.end_date);
     const now = new Date();
 
-    // If tournament is completed, check cache
+    // If tournament is completed, check permanent cache first
     if (endDate < now) {
+      const { data: permanentCache } = await supabase
+        .from('completed_tournament_cache')
+        .select('player_scores')
+        .eq('tournament_id', numericId)
+        .single();
+
+      if (permanentCache) {
+        console.log(`[getTournamentResults] Using permanent cache for completed tournament ${numericId}`);
+        return permanentCache.player_scores;
+      }
+
+      // If no permanent cache, check old cache
       const { data: cachedResults } = await supabase
         .from('tournament_results_cache')
         .select('data')
@@ -65,6 +81,17 @@ export async function getTournamentResults(tournamentId: number | string): Promi
         .single();
 
       if (cachedResults) {
+        // Migrate to permanent cache
+        await supabase
+          .from('completed_tournament_cache')
+          .insert([{
+            tournament_id: numericId,
+            leaderboard_data: {}, // Will be populated by getCachedLeaderboard
+            player_scores: cachedResults.data,
+            tournament_end_date: endDate
+          }]);
+        
+        console.log(`[getTournamentResults] Migrated to permanent cache for tournament ${numericId}`);
         return cachedResults.data;
       }
     }
@@ -72,14 +99,27 @@ export async function getTournamentResults(tournamentId: number | string): Promi
 
   // If not in cache or tournament is ongoing, fetch from API
   const url = `https://api.sportsdata.io/golf/v2/json/PlayerTournamentRoundScores/${numericId}?key=${API_KEY}`;
-  const data = await cachedApiFetch(url, () => loggedFetch(url, undefined, 'getPlayerTournamentRoundScores').then(r => r.json()), 2 * 60 * 1000); // 2 min TTL
+  const ttl = tournament && new Date(tournament.end_date) < new Date() ? COMPLETED_TOURNAMENT_TTL : ACTIVE_TOURNAMENT_TTL;
+  const data = await cachedApiFetch(url, () => loggedFetch(url, undefined, 'getPlayerTournamentRoundScores').then(r => r.json()), ttl);
   if (!data) throw new Error('Failed to fetch tournament results');
 
-  // If tournament is completed, cache the results
+  // If tournament is completed, cache permanently
   if (tournament && new Date(tournament.end_date) < new Date()) {
     await supabase
+      .from('completed_tournament_cache')
+      .upsert([{
+        tournament_id: numericId,
+        leaderboard_data: {}, // Will be populated by getCachedLeaderboard
+        player_scores: data,
+        tournament_end_date: new Date(tournament.end_date)
+      }]);
+    
+    console.log(`[getTournamentResults] Permanently cached completed tournament ${numericId}`);
+  } else {
+    // For active tournaments, use the old cache table
+    await supabase
       .from('tournament_results_cache')
-      .insert([{
+      .upsert([{
         tournament_id: numericId,
         data: data
       }]);
@@ -125,10 +165,26 @@ export async function getTournaments(): Promise<Tournament[]> {
 }
 
 export async function getCachedLeaderboard(tournamentId: number | string, status: 'active' | 'completed'): Promise<unknown> {
+  const numericId = typeof tournamentId === 'string' ? parseInt(tournamentId) : tournamentId;
+  
+  // For completed tournaments, check permanent cache first
+  if (status === 'completed') {
+    const { data: permanentCache } = await supabase
+      .from('completed_tournament_cache')
+      .select('leaderboard_data, tournament_end_date')
+      .eq('tournament_id', numericId)
+      .single();
+    
+    if (permanentCache && permanentCache.leaderboard_data && Object.keys(permanentCache.leaderboard_data).length > 0) {
+      console.log(`[getCachedLeaderboard] Using permanent cache for completed tournament ${numericId}`);
+      return permanentCache.leaderboard_data;
+    }
+  }
+
   const cacheKey = `leaderboard_${tournamentId}_${status}`;
   const now = Date.now();
-  // 5 min cache for active, 1 hour for completed
-  const maxAge = status === 'active' ? 5 * 60 * 1000 : 60 * 60 * 1000;
+  // 30 min cache for active, 1 hour for completed
+  const maxAge = status === 'active' ? ACTIVE_TOURNAMENT_TTL : COMPLETED_TOURNAMENT_TTL;
 
   // Only use localStorage for 'active' tournaments (smaller data)
   if (status === 'active') {
@@ -145,17 +201,40 @@ export async function getCachedLeaderboard(tournamentId: number | string, status
   } else {
     url = `https://api.sportsdata.io/golf/v2/json/LeaderboardBasicFinal/${tournamentId}?key=${API_KEY}`;
   }
+  
+  const ttl = status === 'active' ? ACTIVE_TOURNAMENT_TTL : COMPLETED_TOURNAMENT_TTL;
   const data: unknown = await cachedApiFetch(
     url,
     () => loggedFetch(url, undefined, 'getCachedLeaderboard').then(r => r.json()),
-    status === 'active' ? 2 * 60 * 1000 : 60 * 60 * 1000 // 2 min for active, 1 hour for completed
+    ttl
   );
   if (!data || (typeof data === 'object' && data !== null && !('Players' in data))) {
     throw new Error('Failed to fetch leaderboard');
   }
 
-  // Only cache in localStorage for 'active' tournaments
-  if (status === 'active') {
+  // For completed tournaments, store in permanent cache
+  if (status === 'completed') {
+    // Get tournament end date
+    const { data: tournament } = await supabase
+      .from('tournament_cache')
+      .select('end_date')
+      .eq('tournament_id', numericId)
+      .single();
+    
+    if (tournament) {
+      await supabase
+        .from('completed_tournament_cache')
+        .upsert([{
+          tournament_id: numericId,
+          leaderboard_data: data,
+          player_scores: {}, // Will be populated by getTournamentResults if needed
+          tournament_end_date: new Date(tournament.end_date)
+        }]);
+      
+      console.log(`[getCachedLeaderboard] Permanently cached completed tournament leaderboard ${numericId}`);
+    }
+  } else {
+    // Only cache in localStorage for 'active' tournaments
     try {
       localStorage.setItem(cacheKey, JSON.stringify(data));
       localStorage.setItem(`${cacheKey}_time`, now.toString());
@@ -164,6 +243,6 @@ export async function getCachedLeaderboard(tournamentId: number | string, status
       console.warn('Leaderboard cache error:', e);
     }
   }
-  // For 'completed', do not cache in localStorage (data is too large)
+  
   return data;
 }
