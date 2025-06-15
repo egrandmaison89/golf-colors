@@ -3,10 +3,11 @@ import { Trophy, Users, Sparkles, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useEffect, useState } from 'react';
-import { getTournaments, getTournamentResults } from '../lib/tournament-cache';
-import type { Tournament, Player } from '../types/tournament';
+import { getTournaments, getTournamentResults, getCachedLeaderboard } from '../lib/tournament-cache';
+import type { Tournament, Player, TeamPlayer } from '../types/tournament';
 import golfersData from '../../public/golfers.json';
 import { getPlayerStatus, calculatePlayerScore } from '../utils/tournament';
+import { calculateTeamScores } from '../utils/leaderboard';
 
 interface LeaderboardEntry {
   player_name: string;
@@ -315,61 +316,48 @@ export function Home() {
         }
       }
       // Fetch teamPlayers and results for score calculation
-      const resultsData = await getTournamentResults(currentTournament.TournamentID);
+      let players: Player[] = [];
+      let leaderboardData: { Players: Player[] } | null = null;
+      // Use cached leaderboard for completed tournaments
+      if (currentTournament && new Date(currentTournament.EndDate) < new Date()) {
+        leaderboardData = await getCachedLeaderboard(currentTournament.TournamentID, 'completed') as { Players: Player[] };
+        players = leaderboardData && leaderboardData.Players ? leaderboardData.Players : [];
+      } else {
+        // For active tournaments, fallback to getTournamentResults
+        players = await getTournamentResults(currentTournament.TournamentID);
+      }
       const { data: teamPlayersData } = await supabase
         .from('team_players')
-        .select('player_id, tournament_entries!inner(profiles(team_name, team_color))')
+        .select('*, tournament_entries!inner(profiles(team_name, team_color))')
         .eq('tournament_entries.tournament_id', currentTournament.TournamentID);
-      // Build a map of team_name -> { team_color, player_ids }
-      const teamMap = new Map<string, { team_color: string; player_ids: number[] }>();
-      if (teamPlayersData) {
-        (teamPlayersData as Array<{ player_id: number; tournament_entries?: { profiles?: { team_name?: string; team_color?: string }[] } }>).forEach(tp => {
-          let teamName: string | undefined;
-          let teamColor: string | undefined;
-          if (tp.tournament_entries && tp.tournament_entries.profiles) {
-            if (Array.isArray(tp.tournament_entries.profiles)) {
-              teamName = tp.tournament_entries.profiles[0]?.team_name;
-              teamColor = tp.tournament_entries.profiles[0]?.team_color;
-            } else {
-              teamName = (tp.tournament_entries.profiles as { team_name?: string })?.team_name;
-              teamColor = (tp.tournament_entries.profiles as { team_color?: string })?.team_color;
-            }
-          }
-          if (teamName) {
-            if (!teamMap.has(teamName)) {
-              teamMap.set(teamName, { team_color: teamColor || '#3b82f6', player_ids: [] });
-            }
-            teamMap.get(teamName)!.player_ids.push(tp.player_id);
-          }
-        });
-      }
-      // Calculate team scores using all drafted players (including MC/WD)
-      const teamScores = new Map<string, number>();
-      for (const [teamName, { player_ids }] of teamMap.entries()) {
-        let total = 0;
-        for (const pid of player_ids) {
-          const player = resultsData.find((p: unknown) => typeof p === 'object' && p !== null && 'PlayerID' in p && (p as Player).PlayerID === pid) as Player | undefined;
-          if (player) {
-            const safePlayer: Player = {
-              PlayerID: player.PlayerID,
-              FirstName: player.FirstName ?? '',
-              LastName: player.LastName ?? '',
-              TotalScore: player.TotalScore ?? 0,
-              IsWithdrawn: player.IsWithdrawn ?? false,
-              TotalStrokes: player.TotalStrokes ?? 0,
-              Par: player.Par ?? 0,
-              PlayerRoundScore: player.PlayerRoundScore ?? [],
-            };
-            total += calculatePlayerScore(safePlayer, resultsData, true);
-          }
+      const formattedTeamPlayers: TeamPlayer[] = teamPlayersData ? teamPlayersData.map(tp => ({
+        ...tp,
+        profile: {
+          team_name: tp.tournament_entries?.profiles?.team_name || 'Unknown Team',
+          team_color: tp.tournament_entries?.profiles?.team_color || 'Blue'
         }
-        teamScores.set(teamName, total);
-      }
+      })) : [];
+      // Normalize MC players: ensure MadeCut: 0 for MCs
+      const draftedPlayerIds = new Set(formattedTeamPlayers.map(tp => tp.player_id));
+      players = players.map(p => {
+        if (
+          p.TotalScore === null &&
+          p.TotalStrokes > 0 &&
+          (typeof p.MadeCut === 'undefined' || p.MadeCut === null)
+        ) {
+          return { ...p, MadeCut: 0 };
+        }
+        return p;
+      })
+      // Only include drafted players in the calculation
+      .filter(p => draftedPlayerIds.has(p.PlayerID));
+      // Use shared calculateTeamScores
+      const teamScores = calculateTeamScores(players, formattedTeamPlayers);
       // Build standings array
-      const standings = Array.from(teamMap.entries()).map(([team_name, { team_color }]) => ({
-        team_name,
-        team_color,
-        total_score: teamScores.get(team_name) ?? 0
+      const standings = teamScores.map(team => ({
+        team_name: team.team_name,
+        team_color: formattedTeamPlayers.find(tp => tp.profile.team_name === team.team_name)?.profile.team_color || '#3b82f6',
+        total_score: team.total_score
       }));
       standings.sort((a, b) => a.total_score - b.total_score);
       setTeamStandings(standings);

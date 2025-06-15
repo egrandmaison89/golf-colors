@@ -26,6 +26,7 @@ export interface Player {
   CareerEarnings?: number;
   WorldGolfRanking?: number;
   Swings?: string;
+  MadeCut?: number;
 }
 
 export interface PlayerRound {
@@ -45,6 +46,7 @@ export interface TeamPlayer {
   player_id: number;
   profile: {
     team_name: string;
+    team_color?: string;
   };
 }
 

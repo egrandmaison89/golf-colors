@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import type { Player, TeamPlayer, TeamScore } from '../types/tournament';
+import { getPlayerStatus, calculatePlayerScore } from './tournament';
 
 export interface YearlyLeaderboardEntry {
   team_name: string;
@@ -57,4 +59,49 @@ export async function fetchYearlyLeaderboard(): Promise<YearlyLeaderboardEntry[]
   // Filter out nulls before sorting
   const filtered = leaderboardData.filter((entry): entry is YearlyLeaderboardEntry => entry !== null);
   return filtered.sort((a, b) => b.totalEarnings - a.totalEarnings);
+}
+
+export function calculateTeamScores(players: Player[], teamPlayers: TeamPlayer[]): TeamScore[] {
+  const teamScoresMap = new Map<string, TeamScore>();
+
+  teamPlayers.forEach(tp => {
+    const player = players.find(p => p.PlayerID === tp.player_id);
+    if (!player) return;
+
+    const teamName = tp.profile.team_name;
+    const status = getPlayerStatus(player);
+    const playerScore = calculatePlayerScore(player, players, true);
+
+    if (!teamScoresMap.has(teamName)) {
+      teamScoresMap.set(teamName, {
+        team_name: teamName,
+        total_score: 0,
+        players: []
+      });
+    }
+
+    const teamScore = teamScoresMap.get(teamName)!;
+    teamScore.total_score += playerScore;
+    teamScore.players.push({
+      player_id: player.PlayerID,
+      score: playerScore,
+      firstName: player.FirstName,
+      lastName: player.LastName,
+      status: status
+    });
+  });
+
+  // Sort players within each team
+  teamScoresMap.forEach(team => {
+    team.players.sort((a, b) => {
+      // Active players first
+      if (a.status === 'active' && b.status !== 'active') return -1;
+      if (a.status !== 'active' && b.status === 'active') return 1;
+      // Then sort by score
+      return a.score - b.score;
+    });
+  });
+
+  return Array.from(teamScoresMap.values())
+    .sort((a, b) => a.total_score - b.total_score);
 } 
