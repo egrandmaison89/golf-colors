@@ -318,22 +318,38 @@ export function Home() {
       const resultsData = await getTournamentResults(currentTournament.TournamentID);
       const { data: teamPlayersData } = await supabase
         .from('team_players')
-        .select('player_id, tournament_entries!inner(profiles(team_name))')
+        .select('player_id, tournament_entries!inner(profiles(team_name, team_color))')
         .eq('tournament_entries.tournament_id', currentTournament.TournamentID);
-      // Calculate team scores
-      const teamScores = new Map<string, number>();
+      // Build a map of team_name -> { team_color, player_ids }
+      const teamMap = new Map<string, { team_color: string; player_ids: number[] }>();
       if (teamPlayersData) {
-        (teamPlayersData as Array<{ player_id: number; tournament_entries?: { profiles?: { team_name?: string }[] } }>).forEach(tp => {
-          const player = resultsData.find((p: unknown) => typeof p === 'object' && p !== null && 'PlayerID' in p && (p as Player).PlayerID === tp.player_id) as Player | undefined;
+        (teamPlayersData as Array<{ player_id: number; tournament_entries?: { profiles?: { team_name?: string; team_color?: string }[] } }>).forEach(tp => {
           let teamName: string | undefined;
+          let teamColor: string | undefined;
           if (tp.tournament_entries && tp.tournament_entries.profiles) {
             if (Array.isArray(tp.tournament_entries.profiles)) {
               teamName = tp.tournament_entries.profiles[0]?.team_name;
+              teamColor = tp.tournament_entries.profiles[0]?.team_color;
             } else {
               teamName = (tp.tournament_entries.profiles as { team_name?: string })?.team_name;
+              teamColor = (tp.tournament_entries.profiles as { team_color?: string })?.team_color;
             }
           }
-          if (player && teamName) {
+          if (teamName) {
+            if (!teamMap.has(teamName)) {
+              teamMap.set(teamName, { team_color: teamColor || '#3b82f6', player_ids: [] });
+            }
+            teamMap.get(teamName)!.player_ids.push(tp.player_id);
+          }
+        });
+      }
+      // Calculate team scores using all drafted players (including MC/WD)
+      const teamScores = new Map<string, number>();
+      for (const [teamName, { player_ids }] of teamMap.entries()) {
+        let total = 0;
+        for (const pid of player_ids) {
+          const player = resultsData.find((p: unknown) => typeof p === 'object' && p !== null && 'PlayerID' in p && (p as Player).PlayerID === pid) as Player | undefined;
+          if (player) {
             const safePlayer: Player = {
               PlayerID: player.PlayerID,
               FirstName: player.FirstName ?? '',
@@ -344,15 +360,13 @@ export function Home() {
               Par: player.Par ?? 0,
               PlayerRoundScore: player.PlayerRoundScore ?? [],
             };
-            const score = getPlayerStatus(player) === 'cut'
-              ? calculatePlayerScore(safePlayer, resultsData, true)
-              : player.TotalScore ?? 0;
-            teamScores.set(teamName, (teamScores.get(teamName) || 0) + score);
+            total += calculatePlayerScore(safePlayer, resultsData, true);
           }
-        });
+        }
+        teamScores.set(teamName, total);
       }
       // Build standings array
-      const standings = Array.from(teamsMap.entries()).map(([team_name, { team_color }]) => ({
+      const standings = Array.from(teamMap.entries()).map(([team_name, { team_color }]) => ({
         team_name,
         team_color,
         total_score: teamScores.get(team_name) ?? 0
